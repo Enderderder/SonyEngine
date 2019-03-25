@@ -32,7 +32,6 @@ bool readRawTextureData(const char *path, void *address, size_t size)
 
 int main(int argc, const char *argv[])
 {
-	
 	Gnm::GpuMode gpuMode = Gnm::getGpuMode();
 	int ret;
 
@@ -539,4 +538,9 @@ int main(int argc, const char *argv[])
 	garlicAllocator.terminate();
 
 	return 0;
+}
+
+void InitializeEngine()
+{
+
 }
