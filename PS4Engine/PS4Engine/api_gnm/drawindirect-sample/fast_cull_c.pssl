@@ -1,0 +1,158 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "cull_cb.h"
+
+DataBuffer<float3> g_boundingBoxMin : register(t0);
+DataBuffer<float3> g_boundingBoxMax : register(t1);
+DataBuffer<uint> g_backface0 : register(t2);
+DataBuffer<uint> g_backface1 : register(t3);
+DataBuffer<uint> g_backface2 : register(t4);
+DataBuffer<uint> g_index : register(t5);
+DataBuffer<float3> g_position : register(t6);
+
+RW_DataBuffer<uint> g_culledIndices : register(u0);	
+RW_DataBuffer<uint> g_culledIndex : register(u1);
+
+thread_group_memory uint g_vertexSets;
+thread_group_memory uint g_vertexSet[64];
+
+bool allVerticesInFrontOfPlane(float3 mini, float3 maxi, float4 plane)
+{
+	const float x0 = mini.x * plane.x;
+	const float x1 = maxi.x * plane.x;
+	const float y0 = mini.y * plane.y;
+	const float y1 = maxi.y * plane.y;
+	const float z0 = mini.z * plane.z;
+	const float z1 = maxi.z * plane.z;
+	const float w  =          plane.w;
+	return (((x0 + y0 + z0 + w) >= 0) && ((x1 + y0 + z0 + w) >= 0)
+	     && ((x0 + y1 + z0 + w) >= 0) && ((x1 + y1 + z0 + w) >= 0)
+	     && ((x0 + y0 + z1 + w) >= 0) && ((x1 + y0 + z1 + w) >= 0)
+	     && ((x0 + y1 + z1 + w) >= 0) && ((x1 + y1 + z1 + w) >= 0));   
+}
+
+bool allVerticesBehindPlane(float3 mini, float3 maxi, float4 plane)
+{
+	const float x0 = mini.x * plane.x;
+	const float x1 = maxi.x * plane.x;
+	const float y0 = mini.y * plane.y;
+	const float y1 = maxi.y * plane.y;
+	const float z0 = mini.z * plane.z;
+	const float z1 = maxi.z * plane.z;
+	const float w  =          plane.w;
+	return (((x0 + y0 + z0 + w) < 0) && ((x1 + y0 + z0 + w) < 0)
+	     && ((x0 + y1 + z0 + w) < 0) && ((x1 + y1 + z0 + w) < 0)
+	     && ((x0 + y0 + z1 + w) < 0) && ((x1 + y0 + z1 + w) < 0)
+	     && ((x0 + y1 + z1 + w) < 0) && ((x1 + y1 + z1 + w) < 0));   
+}
+
+// each wave does 4,096 triangles (64 vertexsets of 64 triangles each per wave)
+
+[NUM_THREADS(64, 1, 1)]
+void main(uint threadID : S_GROUP_THREAD_ID, uint3 groupID : S_GROUP_ID)
+{
+	const uint wave = groupID.x;
+	const uint thread = threadID.x;
+	g_vertexSets = 0;
+
+	// first this wave backface-culls, frustum-culls and occlusion-culls 64 vertexsets (1024 triangles) in parallel.
+	// if the backface test fails, a per-vertexset bounding box isn't loaded for frustum and occlusion tests.
+
+	{
+		const uint vertexSet = wave * 64 + thread;
+		const uint vertexSets = (m_triangles + 15) / 16;
+		if(vertexSet < vertexSets)
+		{
+			const uint trianglePairs = (m_triangles + 1) / 2;
+			const uint triangleWords = (trianglePairs + 31) / 32;
+			const uint word = vertexSet >> 5;
+			const uint mask = (1 << (vertexSet & 31));
+			if((g_backface0[triangleWords + word] & mask)
+		     | (g_backface1[triangleWords + word] & mask)
+			 | (g_backface2[triangleWords + word] & mask))
+			{
+				const float3 mini = g_boundingBoxMin[vertexSet];
+				const float3 maxi = g_boundingBoxMax[vertexSet];
+				bool culledByViewFrustum = false;
+				for(uint plane = 0; plane < 5; ++plane)
+				{
+					if(allVerticesBehindPlane(mini, maxi, m_frustumPlane[plane]))
+					{
+						culledByViewFrustum = true; // if we're behind even one of the frustum planes, we're culled by the frustum.
+						break;
+					}
+				}
+				if(culledByViewFrustum == false)
+				{
+					bool occluded = false;
+					for(uint occluder = 0; occluder < m_occluders && !occluded; ++occluder)
+					{
+						occluded = true;
+						for(uint plane = 0; plane < 5; ++plane)
+							if(!allVerticesBehindPlane(mini, maxi, m_occluderPlane[occluder][plane]))
+							{
+								occluded = false; // if we poke out in front of even one of the occluder planes, we aren't occluded by the occluder.
+								break;
+							}
+					}
+					if(occluded == false)
+					{
+						uint nextVertexSet;
+						AtomicAdd(g_vertexSets, 1, nextVertexSet);
+						g_vertexSet[nextVertexSet] = vertexSet;
+					}
+				}
+			}
+		}
+	}
+	
+	// then, for each vertexset that wasn't culled, we backface-cull its 16 triangles in parallel.
+	
+	for(uint v = 0; v < g_vertexSets; v += 4)
+	{
+		const uint vertexSetOffset = v + thread / 16;
+		if(vertexSetOffset < g_vertexSets)
+		{
+			const uint vertexSet = g_vertexSet[vertexSetOffset];
+			const uint triangle = vertexSet * 16 + thread % 16;
+			if(triangle < m_triangles)
+			{
+				const uint trianglePair = triangle / 2;
+				const uint word = trianglePair >> 5;
+				const uint bit = trianglePair & 31;
+				const uint fronts = ((g_backface0[word] >> bit) & 1) 
+				                  + ((g_backface1[word] >> bit) & 1)
+				 	  	          + ((g_backface2[word] >> bit) & 1);
+				switch(fronts)
+				{
+				 case 1: 
+				 case 2:
+					// uncomment this code to backface-cull individual triangles when not every polyhedron vertex can see them				 					
+					//const uint i0 = g_index[3 * triangle + 0];
+					//const uint i1 = g_index[3 * triangle + 1];
+					//const uint i2 = g_index[3 * triangle + 2];
+					//const float3 p0 = g_position[i0];
+					//const float3 p1 = g_position[i1];
+					//const float3 p2 = g_position[i2];
+					//const float3 a = p0 - m_eye[0].xyz;
+					//const float3 b = p1 - m_eye[0].xyz;
+					//const float3 c = p2 - m_eye[0].xyz;
+					//const float3 bxc = cross(b, c);
+					//if(dot(a, -bxc) <= 0)
+						//break;
+				//case 0: // uncomment case 0 to see how well broadphase (16 triangle) backface culling works without narrowphase's help.
+				case 3:
+					uint nextCulledIndex;
+					AtomicAdd(g_culledIndices[0], 3, nextCulledIndex);
+					g_culledIndex[nextCulledIndex + 0] = g_index[triangle * 3 + 0];
+					g_culledIndex[nextCulledIndex + 1] = g_index[triangle * 3 + 1];
+					g_culledIndex[nextCulledIndex + 2] = g_index[triangle * 3 + 2];
+				}
+			}
+		}
+	}
+}

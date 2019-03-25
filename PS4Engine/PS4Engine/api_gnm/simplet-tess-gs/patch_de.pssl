@@ -1,0 +1,37 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+#include "sh_outputs.hs"
+
+[DOMAIN_PATCH_TYPE("quad")]
+ESGS_ENTRY main( /*HS_CNST_OUTPUT input, */float2 domainCoordinates : S_DOMAIN_LOCATION, 
+             const OutputPatch<HS_OUTPUT, 4> QuadPatch )
+{
+	ESGS_ENTRY output = (ESGS_ENTRY)0;
+
+	float u = domainCoordinates.x;
+	float v = domainCoordinates.y;
+	float Wll = (1-u)*(1-v);
+	float Wrl = u*(1-v);
+	float Wlu = (1-u)*v;
+	float Wru = u*v;
+   
+    
+    // Interpolate other inputs with barycentric coordinates
+    float2 texCoord = Wll*QuadPatch[0].texCoord+Wrl*QuadPatch[1].texCoord+
+					  Wru*QuadPatch[2].texCoord+Wlu*QuadPatch[3].texCoord;
+					  
+	float3 color = Wll*QuadPatch[0].color+Wrl*QuadPatch[1].color+
+					  Wru*QuadPatch[2].color+Wlu*QuadPatch[3].color;
+	float3 color2 = 0.5*(float3(1,0,0)*color.x + float3(1,1,1)*(1-color.x));
+                      
+    output.vPosition = float4(texCoord, 0, 1);
+    output.color = color2;
+    
+    
+    return output;
+}

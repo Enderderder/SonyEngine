@@ -1,0 +1,374 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "comp_buildn_cbuffer.h"
+#include "../toolkit/shader_common/noise.hs"
+
+
+Texture2D gbuf_tex : register( t2 );
+Texture2D depth_tex : register( t3 );
+
+RW_Texture2D<float3> second_display : register( u1 );
+
+#define NR_THREADS	64
+
+
+
+#define LTILEX		(TILEX+2)
+#define LTILEY		(TILEY+2)
+
+#define NR_LPIXELS	(LTILEX*LTILEY)
+
+thread_group_memory float g_w0_l[NR_LPIXELS];
+thread_group_memory float g_w0_b[NR_LPIXELS];
+thread_group_memory float g_dBs[NR_LPIXELS];
+thread_group_memory float g_dBt[NR_LPIXELS];
+thread_group_memory float g_height[NR_LPIXELS];
+thread_group_memory float g_depth[NR_LPIXELS];
+
+#ifdef USE_EARLY_OUT
+thread_group_memory int g_iFoundNonZeroHeight;
+#endif
+
+// which group we are in relative to dispatch(): uint3 groupID : S_GROUP_ID
+// relative to actual num threads in group: uint3 threadID : S_GROUP_THREAD_ID
+// flattens S_GROUP_THREAD_ID into 1D: uint index : S_GROUP_INDEX
+
+// global thread id: uint3 globalID : S_DISPATCH_THREAD_ID
+
+bool BuildBufferViewZ(uint threadID, int2 tile_pos);
+void BuildBufferEdgeWeights(uint threadID);
+void BuildDerivatives(uint threadID);	// relative to screen
+void BlurBySobel(uint threadID);
+void CalcSurfaceDerivatives(out float3 vSigmaS, out float3 vSigmaT, const float3 vN, const float3 vPixCoord);
+
+[NUM_THREADS(NR_THREADS, 1, 1)]
+void main(uint threadID : S_GROUP_INDEX, uint3 groupID : S_GROUP_ID)
+{
+	int2 tile_pos = (int2) (groupID.xy * uint2(TILEX, TILEY));
+#ifdef USE_EARLY_OUT
+	int iGarbage;
+	g_iFoundNonZeroHeight = 0;
+	bool bFoundNonZeroHeight = BuildBufferViewZ(threadID, tile_pos);
+#else
+	BuildBufferViewZ(threadID, tile_pos);
+#endif	
+	ThreadGroupMemoryBarrierSync();
+#ifdef USE_EARLY_OUT
+	AtomicOr(g_iFoundNonZeroHeight, bFoundNonZeroHeight ? 1 : 0, iGarbage);
+	ThreadGroupMemoryBarrierSync();
+	if(g_iFoundNonZeroHeight!=0)
+#endif
+	{
+		BuildBufferEdgeWeights(threadID);
+	
+		ThreadGroupMemoryBarrierSync();
+	
+		BuildDerivatives(threadID);
+	
+		ThreadGroupMemoryBarrierSync();
+	
+		{	// this step is not mandatory but looks nice
+			BlurBySobel(threadID);
+			ThreadGroupMemoryBarrierSync();
+		}
+	
+	
+		// Finally calculate the perturbed normal
+		for(uint i=threadID; i<NR_PIXELS; i+=NR_THREADS)
+		{
+			const int x = i % TILEX;
+			const int y = i / TILEX;
+		
+			const int2 pos = int2(tile_pos.x + x, tile_pos.y + y);
+		
+			const int x2 = x+1;
+			const int y2 = y+1;
+		
+			const float dBs = g_dBs[y2*LTILEX+x2];
+			const float dBt = g_dBt[y2*LTILEX+x2];
+			const float dpth = g_depth[y2*LTILEX+x2];
+		
+			float3 vVertN = gbuf_tex.Load(int3(pos, 0)).xyz;
+			vVertN = normalize(2*vVertN-1);
+		
+			float3 vPixCoord = float3(pos.x+0.5, pos.y+0.5, dpth);
+			float3 vSigmaS, vSigmaT;
+			CalcSurfaceDerivatives(vSigmaS, vSigmaT, vVertN, vPixCoord);
+		
+			// perturb
+			const float3 vN = PerturbNormalArbDomain(vSigmaS, vSigmaT, vVertN, dBs, dBt);
+			float3 tN = 0.5*vN+float3(0.5,0.5,0.5);
+			second_display[pos] = tN;
+		}
+	}
+#ifdef USE_EARLY_OUT
+	else
+	{
+		for(uint i=threadID; i<NR_PIXELS; i+=NR_THREADS)
+		{
+			const int x = i % TILEX;
+			const int y = i / TILEX;
+		
+			const int2 pos = int2(tile_pos.x + x, tile_pos.y + y);
+			float3 tN = 0.5*float3(0,0,0)+float3(0.5,0.5,0.5);
+			second_display[pos] = tN;
+		}
+	}
+#endif
+}
+
+bool BuildBufferViewZ(uint threadID, int2 tile_pos)
+{
+	const float4 C0 = g_mInvProj[0];
+	const float4 C1 = g_mInvProj[1];
+	const float4 C2 = g_mInvProj[2];
+	const float4 C3 = g_mInvProj[3];
+	
+	const float4 row2 = float4(C0.z, C1.z, C2.z, C3.z);
+	const float4 row3 = float4(C0.w, C1.w, C2.w, C3.w);
+
+	const float bump_scale = 0.3;
+	
+	bool bFoundNonZeroHeight = false;
+	for(uint i=threadID; i<NR_LPIXELS; i+=NR_THREADS)
+	{
+		const int x = i % LTILEX;
+		const int y = i / LTILEX;
+		
+		const int2 pos = int2(tile_pos.x + x - 1, tile_pos.y + y - 1);
+		
+		float val = bump_scale*gbuf_tex.Load(int3(pos, 0)).w;
+		float depth = depth_tex.Load(int3(pos, 0)).x;
+		
+		float3 vScrPos = float3(pos.x+0.5, pos.y+0.5, depth);
+		
+		float ViewZ = dot(float4(vScrPos, 1), row2) / dot(float4(vScrPos, 1), row3);
+		g_dBs[y*LTILEX+x] = ViewZ;			// temp store Z here
+		g_height[y*LTILEX+x] = val;
+		g_depth[y*LTILEX+x] = depth;
+
+		bFoundNonZeroHeight = bFoundNonZeroHeight || (val>0.0);
+	}
+
+	return bFoundNonZeroHeight;
+}
+
+void BuildBufferEdgeWeights(uint threadID)
+{
+	// build left weights first
+	for(uint i=threadID; i<((TILEX+1)*LTILEY); i+=NR_THREADS)
+	{
+		const int x = i % (TILEX+1);
+		const int y = i / (TILEX+1);
+		
+		const int x2 = x+1;
+		
+		// Get ViewZs stored in dBs
+		const float cenZ = g_dBs[y*LTILEX+x2];
+		const float LftZ = g_dBs[y*LTILEX+x2-1];
+		
+		float Dlft = LftZ - cenZ;
+		const float fS = 0.2;
+		const float w0_l = exp(-(Dlft*Dlft)*fS);		// fS small makes center height bleed less/slower into neighbors
+		
+		g_w0_l[y*LTILEX+x2] = w0_l;
+	}
+	
+	for(uint i=threadID; i<(LTILEX*(TILEY+1)); i+=NR_THREADS)
+	{
+		const int x = i % LTILEX;
+		const int y = i / LTILEX;
+		
+		const int y2 = y+1;
+		
+		// Get ViewZs stored in dBs
+		const float cenZ = g_dBs[y2*LTILEX+x];
+		const float BotZ = g_dBs[(y2-1)*LTILEX+x];	// fS small makes center height bleed less/slower into neighbors
+		
+		float Dbot = BotZ - cenZ;
+		const float fS = 0.2;
+		const float w0_b = exp(-(Dbot*Dbot)*fS);
+		
+		g_w0_b[y2*LTILEX+x] = w0_b;
+	}
+}
+
+void BuildDerivatives(uint threadID)	// relative to screen
+{
+	// horizontal pass
+	for(uint i=threadID; i<(TILEX*LTILEY); i+=NR_THREADS)
+	{
+		const int x = i % TILEX;
+		const int y = i / TILEX;
+		
+		const int x2 = x+1;
+		
+		const int index_l = y*LTILEX+x2-1;
+		const int index_c = y*LTILEX+x2;
+		const int index_r = y*LTILEX+x2+1;
+		
+		float Rhgt = lerp(g_height[index_c], g_height[index_r], g_w0_l[index_r]);
+		float Lhgt = lerp(g_height[index_c], g_height[index_l], g_w0_l[index_c]);
+		float dBs = 0.5*(Rhgt - Lhgt);
+		
+		g_dBs[y*LTILEX+x2] = dBs;
+	}
+	
+	// vertical pass
+	for(uint i=threadID; i<(LTILEX*TILEY); i+=NR_THREADS)
+	{
+		const int x = i % LTILEX;
+		const int y = i / LTILEX;
+		
+		const int y2 = y+1;
+		
+		const int index_b = (y2-1)*LTILEX+x;
+		const int index_c = y2*LTILEX+x;
+		const int index_t = (y2+1)*LTILEX+x;
+		
+		float Thgt = lerp(g_height[index_c], g_height[index_t], g_w0_b[index_t]);
+		float Bhgt = lerp(g_height[index_c], g_height[index_b], g_w0_b[index_c]);
+		float dBt = 0.5*(Thgt - Bhgt);
+		
+		g_dBt[y2*LTILEX+x] = dBt;
+	}
+}
+
+void BlurBySobel(uint threadID)
+{
+	// vert blur first
+	for(uint i=threadID; i<NR_PIXELS; i+=NR_THREADS)
+	{
+		const int x = i % TILEX;
+		const int y = i / TILEX;
+		
+		const int x2 = x+1;
+		const int y2 = y+1;
+		
+		const int index_c = y2*LTILEX+x2;
+		const int index_t = (y2+1)*LTILEX+x2;
+		const int index_b = (y2-1)*LTILEX+x2;
+		const int index_l = y2*LTILEX+x2-1;
+		const int index_r = y2*LTILEX+x2+1;
+		
+		float3 sobVert = float3(g_w0_b[index_c], 2, g_w0_b[index_t]);
+		sobVert /= (sobVert.x+sobVert.y+sobVert.z);
+		
+		float3 sobHrz = float3(g_w0_l[index_c], 2, g_w0_l[index_r]);
+		sobHrz /= (sobHrz.x+sobHrz.y+sobHrz.z);
+		
+		g_w0_b[y2*LTILEX+x2] = dot(sobVert, float3(g_dBs[index_b], g_dBs[index_c], g_dBs[index_t]) );
+		g_height[y2*LTILEX+x2] = dot(sobHrz, float3(g_dBt[index_l], g_dBt[index_c], g_dBt[index_r]) );
+	}
+	
+	
+	ThreadGroupMemoryBarrierSync();
+	
+	// copy back
+	for(uint i=threadID; i<NR_PIXELS; i+=NR_THREADS)
+	{
+		const int x = i % TILEX;
+		const int y = i / TILEX;
+		
+		const int x2 = x+1;
+		const int y2 = y+1;
+		
+		const int index_c = y2*LTILEX+x2;
+		g_dBs[index_c] = g_w0_b[index_c];
+		g_dBt[index_c] = g_height[index_c];
+	}
+}
+
+#define FLT_EPSILON     1.0e-05F        // small but non-zero cutoff value
+
+void CalcSurfaceDerivatives(out float3 vSigmaS, out float3 vSigmaT, const float3 surf_norm, const float3 vPixCoord)
+{
+	float4 pos_h = mul( float4(vPixCoord,1), g_mInvProj );
+	float3 pos = (1/pos_h.w) * pos_h.xyz;
+	
+	
+	float4 tplane = float4(surf_norm, -dot(surf_norm, pos));
+	float4 scrsp_tplane = mul(g_mInvProj, tplane);		// transform by inverse transposed to get to destination
+
+	
+	// determine intersection against plane in screen space
+	// z = - (A/C)x - (B/C)y - (D/C) 
+	//float4(s, t, - (A/C)s - (B/C)t - (D/C), 1);
+	
+	// determine derivative of this function in view space relative to screen pixels
+	const float Nz = (scrsp_tplane.z<0?(-1):1) * max(abs(scrsp_tplane.z), FLT_EPSILON);
+	const float k0 = -scrsp_tplane.x / Nz;
+	const float k1 = -scrsp_tplane.y / Nz;
+	const float k2 = -scrsp_tplane.w / Nz;
+	
+	const float4 C0 = g_mInvProj[0];
+	const float4 C1 = g_mInvProj[1];
+	const float4 C2 = g_mInvProj[2];
+	const float4 C3 = g_mInvProj[3];
+	
+	const float4 v0 = C0+k0*C2;
+	const float4 v1 = C1+k1*C2;
+	const float4 v2 = C3+k2*C2;
+	
+	// homogeneous intersection in view space: vX(s,t) = s*v0 + t*v1 + v2
+	const Vector4Unaligned vX = v0*vPixCoord.x + v1*vPixCoord.y + v2;
+	vSigmaS = (v0.xyz * vX.w - vX.xyz * v0.w) / (vX.w*vX.w);
+	vSigmaT = (v1.xyz * vX.w - vX.xyz * v1.w) / (vX.w*vX.w);
+}
+
+/*
+void BlurBySobel(uint threadID)
+{
+	// vert blur first
+	for(uint i=threadID; i<(LTILEX*TILEY); i+=NR_THREADS)
+	{
+		const int x = i % LTILEX;
+		const int y = i / LTILEX;
+		
+		const int y2 = y+1;		// center at (x,y2)
+		const float Cw0_b = data[y2*LTILEX+x].w0_b;
+		const float Tw0_b = data[(y2+1)*LTILEX+x].w0_b;
+		
+		const int XadjS = clamp(x, 1, LTILEX-2);				// only dBs derivatives in centered: TILEX x LTILEY
+		const float B_dBs = data[(y2-1)*LTILEX+XadjS].dBs;
+		const float C_dBs = data[y2*LTILEX+XadjS].dBs;
+		const float T_dBs = data[(y2+1)*LTILEX+XadjS].dBs;
+		
+		const float B_dBt = data[max(y2-1,1)*LTILEX+x].dBt;		// only dBt derivatives in centered: LTILEX x TILEY
+		const float C_dBt = data[y2*LTILEX+x].dBt;
+		const float T_dBt = data[min(y2+1, LTILEY-2)*LTILEX+x].dBt;
+		
+		
+		float3 sobVert = float3(Cw0_b, 2, Tw0_b);
+		sobVert /= (sobVert.x+sobVert.y+sobVert.z);
+		
+		data[y2*LTILEX+x].height = dot(sobVert, float3(B_dBs, C_dBs, T_dBs) );
+		data[y2*LTILEX+x].w0_b	 = dot(sobVert, float3(B_dBt, C_dBt, T_dBt) );
+	}
+	
+	ThreadGroupMemoryBarrierSync();
+	
+	// horz blur last
+	for(uint i=threadID; i<NR_PIXELS; i+=NR_THREADS)
+	{
+		const int x = i % TILEX;
+		const int y = i / TILEX;
+		
+		const int x2 = x+1;
+		const int y2 = y+1;
+		
+		SData lft = data[y2*LTILEX+x2-1];
+		SData cen = data[y2*LTILEX+x2];
+		SData rgt = data[y2*LTILEX+x2+1];
+		
+		float3 sobHrz = float3(cen.w0_l, 2, rgt.w0_l);
+		sobHrz /= (sobHrz.x+sobHrz.y+sobHrz.z);
+		
+		data[y2*LTILEX+x2].dBs = dot(sobHrz, float3(lft.height, cen.height, rgt.height) );
+		data[y2*LTILEX+x2].dBt = dot(sobHrz, float3(lft.w0_b, cen.w0_b, rgt.w0_b) );
+	}
+}*/

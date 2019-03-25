@@ -1,0 +1,28 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+#include "../toolkit/shader_common/illum.hs"
+
+SamplerState samp0 : register(s0);
+
+Texture2D colorMap : register( t0 );
+RW_Texture2D<float4> outMips : register( u0 );
+
+
+float4 main( VS_OUTPUT In ) : S_TARGET_OUTPUT
+{
+	float3 diff_col = m_tintColor.xyz * colorMap.Sample(samp0, In.TextureUV.xy).xyz;
+	// Method 1: Write the color to an RW_Texture using the MipMaps[] feature. This approach can be used to write
+	// mipmap data from any shader stage, and may be preferable when mipmap data is procedurally generated.
+	// However, this method will not apply gamma in hardware. If the destination texture has a TextureChannelType of Srgb,
+	// gamma should be applied in shader code before the texel is stored.
+	outMips.MipMaps[m_mipLevel][int3(In.Position.xy, 0)] = 0.5 * float4(diff_col, 1);
+	// Method 2: Return the color as the PS stage output. This approach is preferable when using a mipmap surface as
+	// a RenderTarget, which is capable of applying gamma in hardware.
+	return float4(diff_col, 1);
+}

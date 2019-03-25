@@ -1,0 +1,23 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+#include "cpy_output.hs"
+
+
+CPY_OUTPUT main(unsigned int iIndex : S_VERTEX_ID)
+{
+	CPY_OUTPUT Output;
+	
+	float2 vTex = float2((iIndex==0) ? 0.0 : 1.0, iIndex<2 ? 0 : 1);
+	
+	Output.Position = float4(2*vTex - 1, 0, 1);
+	
+	// Just copy the texture coordinate through
+	Output.TextureUV = float2(vTex.x, 1-vTex.y); 
+
+	return Output;    
+}

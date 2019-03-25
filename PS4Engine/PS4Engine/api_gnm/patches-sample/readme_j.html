@@ -1,0 +1,224 @@
+﻿
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta http-equiv="Content-Style-Type" content="text/css">
+<meta http-equiv="Content-Script-Type" content="text/javascript">
+<xml>
+  <MSHelp:Attr Name="Locale" Value="kbJapanese"/>
+  <MSHelp:Attr Name="DocSet" Value="Sony Interactive Entertainment"/>
+</xml>
+
+<title>libgnm - パッチのサンプル</title>
+
+<style type="text/css"> 
+ <!-- 
+			body { font-family: Arial, Verdana, Helvetica; font-size: 100% }
+			h1, h2, h3, h4, h5, h6 { color: #000000 }
+			h1 {margin: 8px 0;}
+			h2 {border-bottom:1px solid #999999; padding-bottom: 3px; }
+			a { color: DarkBlue; }
+			a:hover, a:active { color: #FF4500; }
+			a:visited { color: DarkRed; }
+			p {margin:0.8em 0;}
+                        ul { margin: 1px 0 1px 2em; padding: 0; }
+			li { font-size: 100% }
+			pre.source { font-size: 100%; font-family: monospace; background-color: #eee; 
+						   background-repeat: repeat; background-attachment: scroll; 
+						   overflow: auto; display: block; border: 1px dashed #aaa; 
+						   margin: 10px 0; padding: 5px; background-position: 0% }
+			div.title1 { color: #000000; font-size: 180%; padding-left: 5px }
+			div.title2 { color: #000000; font-size: 160%; padding-left: 5px }
+			div.title3 { color: #000000; font-size: 140%; padding-left: 5px }
+			div.note { background-color: MistyRose; border: 1px solid Gray; margin: 10px 0; padding: 3px }
+			div.index {  background-color: #eee; border: 1px solid Gray; margin: 10px 0; padding: 3px }
+			span.back-to-top { font-size: 70% }
+			div.indent { font-size: 100%; margin-left: 2em }
+			div.header { font-size: 70%; color:#666666; }
+			table { font-size: 100%; border-collapse: collapse; margin: 5px }
+			td { vertical-align: top; border: 1px solid #ccc; padding-left: 4px; padding-right: 4px; padding-top: 3px; padding-bottom: 3px }
+			th { background-color: #f0f0f0; text-align: center; vertical-align: top; 
+						   border: 1px solid #ccc; padding-left: 4px; padding-right: 4px; 
+		-->
+</style>
+
+</head> 
+<body>
+<div class="header">
+<p>SIE CONFIDENTIAL</p>
+<p>Copyright (C) 2017 Sony Interactive Entertainment Inc. All Rights Reserved.</p>
+</div>
+
+<div class="introduction">
+<h1>libgnm - パッチのサンプル</h1>
+<h2>概要</h2>
+<div class="indent">
+
+テッセレーションハードウェアの性能に影響を及ぼす、さまざまなパラメータを調整して試すサンプルコードです。
+
+</div>
+</div>
+
+<h2>スクリーンショット</h2>
+
+<div align=center><img src="screenshot.png"><br><p>描画結果</p></div>
+
+<h2>詳細</h2>
+<div class="indent">
+
+このサンプルコードは、テッセレーションハードウェアの性能に影響を及ぼす、さまざまなパラメータを調整して試すことにより、ユーザがこのハードウェアの特性をより深く理解できるようにします。
+
+</div>
+
+<h2>操作説明</h2>
+<div class="indent">
+<p></p>
+
+<div class="title3">コントローラ操作</div>
+<table border=1 width=500>
+<tr>
+<th>アクション</th>
+<th>挙動</th>
+</tr>
+
+<tr>
+<td>○ button</td>
+<td>現在のサブメニューを折りたたむ</td>
+</tr>
+
+<tr>
+<td>△ button</td>
+<td>コンテキストに応じた情報を表示する</td>
+</tr>
+
+<tr>
+<td>× button</td>
+<td>現在のサブメニューを展開するか、項目を次の値に調整する</td>
+</tr>
+
+<tr>
+<td>up button</td>
+<td>メニュー内の前の項目を選択する</td>
+</tr>
+
+<tr>
+<td>right button</td>
+<td>1つの値を調整するメニュー項目で次の値を選択する</td>
+</tr>
+
+<tr>
+<td>right analog stick</td>
+<td>選択されているメニューに補助操作があれば、それを制御する（例: カメラを回転する）</td>
+</tr>
+
+<tr>
+<td>left button</td>
+<td>1つの値を調整するメニュー項目で前の値を選択する</td>
+</tr>
+
+<tr>
+<td>left analog stick</td>
+<td>1つの値を調整するメニュー項目でアナログスティックを左右に動かすと、その値が上下する。2つの値を調整するメニュー項目で左右に動かすと最初の値が調整され、上下に動かすと2番目の値が調整される</td>
+</tr>
+
+<tr>
+<td>down button</td>
+<td>メニュー内の次の項目を選択する</td>
+</tr>
+
+<tr>
+<td>OPTIONS button</td>
+<td>オンスクリーンのコントローラメニューの表示/非表示を切り替える</td>
+</tr>
+
+</table>
+<br>
+
+<p><table>
+<tr><th colspan=2>メニューシステム</th></tr>
+<tr><th>名前</th><th>解説</th></tr>
+<tr><td>Pause（一時停止）</td><td>シミュレーションを一時停止するか、一時停止を解除する</td></tr>
+<tr><td>Buffer（バッファ）</td><td>表示するバッファを選択する<table>
+<tr><th>名前</th><th>解説</th></tr>
+<tr><td>Color（カラー）</td><td>バックバッファのRGBチャンネル</td></tr>
+<tr><td>Alpha（アルファ）</td><td>バックバッファのアルファチャンネル</td></tr>
+<tr><td>Depth（デプス）</td><td>0-1（黒-白）のデプス値</td></tr>
+</table>
+</td></tr>
+<tr><td>Camera Controls（カメラ制御）</td><td>左スティックで移動、右スティックで回転</td></tr>
+<tr><td>Reset Camera（カメラのリセット）</td><td>カメラを元の姿勢に戻す</td></tr>
+<tr><td>Seconds Elapsed（経過秒数）</td><td>シミュレーション開始からの秒数</td></tr>
+<tr><td>Lighting（ライティング）</td><td>ライティングに関するオプション<table>
+<tr><th>名前</th><th>解説</th></tr>
+<tr><td>Clear Color（クリアカラー）</td><td>バックバッファをクリアするためのカラー<table>
+<tr><th>名前</th><th>解説</th></tr>
+<tr><td>Black（黒）</td><td>黒</td></tr>
+<tr><td>Blue（青）</td><td>青</td></tr>
+<tr><td>Green（緑）</td><td>緑</td></tr>
+<tr><td>Aqua（アクア）</td><td>アクア</td></tr>
+<tr><td>Red（赤）</td><td>赤</td></tr>
+<tr><td>Magenta（マゼンタ）</td><td>マゼンタ</td></tr>
+<tr><td>LightGreen（ライトグリーン）</td><td>ライトグリーン</td></tr>
+<tr><td>LightGray（ライトグレー）</td><td>ライトグレー</td></tr>
+</table>
+</td></tr>
+</table>
+</td></tr>
+<tr><td>Tess factor（テッセレーション係数）</td><td>テッセレーション係数を増減させる</td></tr>
+<tr><td>HS Vert（HSの頂点）</td><td>ハルシェーダでの頂点の読み取りを有効または無効にする。有効にすると、LDSの消費は減るが、ハルシェーダ内での頂点の取得がシリアライズされる</td></tr>
+<tr><td>DS Tang（DSの接線）</td><td>ACC接線パッチの生成をドメインシェーダ、ハルシェーダのどちらで行うかを切り替える。ドメインシェーダで構築すると、LDSの消費は減るが、ドメインシェーダの長さが長くなる</td></tr>
+<tr><td>Number of patches（パッチ数）</td><td>HSスレッドグループ当たりのパッチ数を増減させる</td></tr>
+<tr><td>Threads per reg. patch（標準パッチ当たりのスレッド数）</td><td>ハルシェーダで標準パッチ当たりのスレッド数を4個、16個のどちらにするかを切り替える</td></tr>
+<tr><td>Wireframe（ワイヤーフレーム）</td><td>ワイヤーフレームのオン・オフを切り替える</td></tr>
+<tr><td>Patches Method（パッチの方式）</td><td>「グレゴリパッチ」方式と「近似Catmull-Clark (ACC)」方式を切り替える</td></tr>
+<tr><td>Simple Shader（単純なシェーダ）</td><td>シェーダを切り替える</td></tr>
+<tr><td>Tessellation（テッセレーション）</td><td>パッチと基本VS-PSを切り替える</td></tr>
+<tr><td>Animation（アニメーション）</td><td>スキニングやアニメーションを有効または無効にする</td></tr>
+<tr><td>Skinning in compute（コンピュートでのスキニング）</td><td>スキニングやアニメーションを有効または無効にする</td></tr>
+<tr><td>Num Replicas（複製の数）</td><td>コピー数を増減させる</td></tr>
+</table>
+<table>
+<tr><th colspan=5>コマンドラインオプション</th></tr>
+<tr><th>名前</th><th>解説</th><th>デフォルト値</th><th>最小値</th><th>最大値</th></tr>
+<tr><td>buffers</td><td>ラウンドロビン表示で割り当てるレンダーターゲットの数</td><td>3</td><td>1</td><td>3</td></tr>
+<tr><td>stencil</td><td>レンダーターゲットのステンシルバッファが存在しているか。0=いいえ、1=はい</td><td>0</td><td>0</td><td>1</td></tr>
+<tr><td>htile</td><td>レンダーターゲットのHtileバッファが存在しているか。0=いいえ、1=はい</td><td>1</td><td>0</td><td>1</td></tr>
+<tr><td>microSecondsPerFrame</td><td>0=OSのクロックを使用する、>0=固定された1フレーム当たりのマイクロ秒数を使用する</td><td>0</td><td>0</td><td>100000</td></tr>
+<tr><td>displayBuffer</td><td>どのバッファを表示するか。カラーバッファのRGBチャンネル、カラーバッファのアルファチャンネル、デプスバッファ、またはステンシルバッファ</td><td>0</td><td>0</td><td>3</td></tr>
+<tr><td>cameraControls</td><td>0：カメラ制御が無効化される、1：カメラ制御が有効化される</td><td>1</td><td>0</td><td>1</td></tr>
+<tr><td>displayTimings</td><td>0：フレームのタイミングを表示しない、1：フレームのタイミングを表示する</td><td>1</td><td>0</td><td>1</td></tr>
+<tr><td>clearColor</td><td>バックバッファをクリアするためのカラー</td><td>0</td><td>0</td><td>7</td></tr>
+<tr><td>log2CharacterWidth</td><td>文字の幅（ピクセル）のlog2</td><td>3</td><td>3</td><td>5</td></tr>
+<tr><td>log2CharacterHeight</td><td>文字の高さ（ピクセル）のlog2</td><td>4</td><td>3</td><td>5</td></tr>
+</table>
+  </p>
+</div>
+
+<h2>変更点</h2>
+<ul>
+
+<li>0.80</li>
+
+初出<br>
+
+</ul>
+
+<h2>キーワード</h2>
+<ul>
+
+<li>描画</li>
+
+<li>テクスチャ</li>
+
+<li>グラフィックス</li>
+
+<li>render</li>
+
+<li>texture</li>
+
+<li>graphics</li>
+
+</ul>
+
+</body>
+</html>

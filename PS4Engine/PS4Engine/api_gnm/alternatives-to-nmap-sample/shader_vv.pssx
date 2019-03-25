@@ -1,0 +1,48 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2011 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+
+
+struct VS_INPUT
+{
+    float3 Position     : POSITION;
+    float3 Normal       : NORMAL;
+    float4 Tangent		: TEXCOORD0;
+    float2 TextureUV    : TEXCOORD1;
+};
+
+
+VS_RET main( VS_INPUT input )
+{
+	VS_RET Output;
+
+	// 
+	const float3 vP = g_fMeshScale * input.Position.xyz;
+
+	// Transform the position from object space to homogeneous projection space
+	Output.Position = mul( float4(vP,1), g_mWorldViewProjection );
+	
+#ifdef USE_TSPACE
+	float3 vN = input.Normal;
+	float3 vT = input.Tangent.xyz;
+	float3 vB = input.Tangent.w * cross(vN, vT);
+
+	Output.vTang = normalize(mul(vT, (float3x3)g_mWorldView));
+	Output.vBiTang = normalize(mul(vB, (float3x3)g_mWorldView));
+#endif
+	
+	// untransformed position & normal
+	Output.vPos.xyz = mul(float4(vP,1), g_mWorldView).xyz;
+	Output.vNrm.xyz = normalize(mul(input.Normal, (float3x3)g_mWorldView));
+	
+	// Just copy the texture coordinate through
+	Output.vPos.w = input.TextureUV.x;
+	Output.vNrm.w = 1-input.TextureUV.y;
+	
+	return Output;    
+}

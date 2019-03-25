@@ -1,0 +1,94 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+#include "../toolkit/shader_common/illum.hs"
+#include "../toolkit/shader_common/noise.hs"
+
+
+
+SamplerState g_nomipSampler : register( s2 );
+Texture2D tex_marblecols : register( t2 );
+
+
+float4 main( VS_OUTPUT In ) : S_TARGET_OUTPUT
+{
+	float3 unit_normal = normalize(In.vLocNrm.xyz);
+	float3 vL = normalize(g_vLightPos-In.vLocPos);
+	float3 vL2 = normalize(g_vLightPos2-In.vLocPos);
+	float3 vV = normalize(g_vCamPos-In.vLocPos);
+	
+	// adjust scale of surface Point for Perlin Noise
+	const float fS = 2*2*0.25*0.003 * 8*45;
+	const float3 vP = fS*In.vLocPos;		
+	
+	float fPixSize = GetPixelSize(vP);
+	
+	//float height = 0.5*sin(2.3*vP.x + 2*fractalsum(vP, fPixSize))+0.5;
+	float height = fractalsum(vP, fPixSize);
+	
+	float3 diff_col, spec_col;
+	spec_col = (192/255.0) * float3(1,1,1);
+	
+	diff_col = tex_marblecols.Sample(g_nomipSampler, height).xyz;
+
+
+
+
+	////////////////
+	float3 vN = unit_normal;
+
+	int dent_pow = 3;
+	const float fS2 = 10;//2*2*0.25*0.003 * 8*45;
+	const float3 vP2 = fS2*In.vLocPos;		
+	float fPixSize2 = GetPixelSize(vP2);
+	float4 height4 = dfractalsum(vP2, fPixSize2);
+	
+	height4 *= 0.5; height4.x += 0.5;
+	
+	float fTmp = pow(height4.x,(dent_pow-1));
+	height4.x = fTmp*height4.x;	// pow of dent_pow
+	height4.yzw *= (dent_pow*fTmp);
+	height4 *= -1.5*1.5;
+	height4 *= 2*(4*0.005);
+	
+	vN = PerturbNormal2(vN, height4.yzw);
+	////////////////
+
+
+
+
+
+	// do lighting
+	float Kd = 0.7;//0.4;
+	//const float Ks = 0.12;
+	//float surf_roughness = 16;
+	const float Ks = 0.18;
+	float surf_roughness = 8;		// relative to phong
+	
+	float fNormWorldY = 0.5*mul(vN, (float3x3)g_mWorld).y+0.5;
+	//float3 vAmb = 0.68*0.4*0.2*lerp( float3(0.15,0.35,0.2), float3(0.2,0.3,1), fNormWorldY);
+	float3 vAmb = 0.68*0.4*0.2*lerp( float3(0.85,0.8,0.2), float3(0.2,0.3,1), fNormWorldY);
+	
+	float3 vDiff = 0;
+	float3 vLgtDir[] = {vL, vL2};
+	float3 vLgtCols[] = {0.8*float3(1,1,1), 1.3*float3(1,1,1)};
+	//const float m = toBeckmannParam(surf_roughness);
+	for(int k=0; k<2; k++)
+		vDiff += vLgtCols[k]*BRDF2_ts_nphong(vN, unit_normal, vLgtDir[k], vV, Kd*diff_col, Ks*spec_col, surf_roughness, 8.0);
+
+	//float3 res = vDiff+diff_col*vAmb;
+	float3 res = vDiff+vAmb;
+	
+	float Ka = 0.02;
+	res += Ka*diff_col;
+
+	float Ke = 0.35*1.4*1.5*(33/255.0);
+	res += Ke;
+
+	return float4(res,1);
+}

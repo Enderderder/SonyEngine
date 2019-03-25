@@ -1,0 +1,91 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+//NON_RELEASE_BEGIN
+#ifndef __cplusplus
+#ifndef __PSSL__
+#include "../toolkit/shader_common/PSSL2HLSL.hs"
+#endif
+#endif
+//NON_RELEASE_END
+
+#include "std_cbuffer.h"
+#include "../toolkit/shader_common/shader_base.h"
+#include "../toolkit/shader_common/vsoutput_common.hs"
+
+MS_Texture2D<float4> msaaTex : register( t0 );
+Texture2D<int2> fmaskTex : register(t1);
+
+int getFptr(int index, int2 fmask)
+{
+	const int     bitShift = 4;     // fmask load always returns a 4bit fragment index (fptr) per coverage sample, regardless of actual number of fragments.
+	const int     mask = (1 << bitShift) - 1;
+	if (index < 8)
+		return (fmask.x >> (index*bitShift)) & mask;
+	else
+		return (fmask.y >> ((index-8)*bitShift)) & mask;
+}
+
+float4 main(float4 screenPos : S_POSITION) : S_TARGET_OUTPUT
+{
+	int2    iCoord = int2(screenPos.xy);
+	int     unknown = 1 << 3; // color "unknown" is always represented as high bit in the 4bit fragment index
+
+	// if 8 or less coverage samples, only load one VGPR (32bits / 4bits per sample)
+	// if more than 8 coverage samples, we need to load 2 VGPRs
+	int2 fmask;
+	if (m_rtInfo.m_numSamples <= 8)
+	{
+		fmask.x = fmaskTex.Load(int3(iCoord.x, iCoord.y, 0)).x;
+		fmask.y = 0x88888888; // all invalid -- though in theory we shouldn't need to refer to them at all.
+	}
+	else
+	{
+		fmask.xy = fmaskTex.Load(int3(iCoord.x, iCoord.y, 0)).xy;
+	}
+
+	// Show FMask:
+	if (m_rtInfo.m_whatToShow == 0)
+	{
+		int maxSample = 0;
+		for (int i=0; i<m_rtInfo.m_numSamples; ++i)
+		{
+			int fptr = getFptr(i, fmask);
+			if (maxSample < fptr)
+				maxSample = fptr;
+		}
+		if (maxSample == m_rtInfo.m_sampleIndex)
+			return float4(0, 1, 0, 1);
+		return float4(0, 0.25, 0, 1);
+	}
+	// Show Fragment:
+	else if (m_rtInfo.m_whatToShow == 1)
+	{
+		int fptr = getFptr(m_rtInfo.m_sampleIndex, fmask);
+		if (fptr != unknown)
+		{
+			return msaaTex.Load(int2(iCoord.x, iCoord.y), fptr);
+		}
+		return float4(0, 1, 0, 1);
+	}
+	// Show resolved:
+	else //if (m_rtInfo.m_whatToShow == 2)
+	{
+		int numValidSamples = 0;
+		float4 sum = float4(0, 0, 0, 1);
+		for (int i=0; i<m_rtInfo.m_numSamples; ++i)
+		{
+			int fptr = getFptr(i, fmask);
+			if (fptr != unknown)
+			{
+				float4  color = msaaTex.Load(int2(iCoord.x, iCoord.y), fptr);
+				sum += color;
+				numValidSamples++;
+			}
+		}
+		return sum/(float)numValidSamples;
+	}
+}

@@ -1,0 +1,209 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2011 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+/* Standard evaluation of regular patches (works for both gregory and ACC patches).
+ */
+
+#include "../../../toolkit/shader_common/shader_base.h"
+#include "../std_cbuffer.h"
+#include "../sh_outputs.hs"
+
+
+//--------------------------------------------------------------------
+// Both Gregory patches and Approximate Catmull-Clark patches
+// are easily reduced to a basic bezier patch when the input patch is "regular".
+// Similar to an irregular patch the regular patch consists of a center quad
+// and a surrounding 1-ring of vertices. However, for a regular patch the
+// following properties are always true:
+// 1. The 1-ring consists of 12 vertices
+// 2. The prefixes are: 7, 10, 13, 16 (==4)
+// 3. The valences are all 4
+//--------------------------------------------------------------------
+
+
+
+
+DataBuffer<float2> g_v2TexCoordinates : register( t0 );
+#ifdef READ_VERTS_IN_HS
+DataBuffer<float3> g_v3PositionBuffer;
+DataBuffer<uint> g_uIndexBuffer;
+#endif
+
+#ifdef READ_VERTS_IN_HS
+
+#define NR_INPUT_CTRL_POINTS		1
+#define FETCHINDEX(pi, i)		g_uIndexBuffer[16*(pi) + (i)]
+#define FETCHPOS(pi, i)			(g_fScale*g_v3PositionBuffer[FETCHINDEX(pi, i)]+float3(g_fOffs,0,0))
+
+#else
+
+#define NR_INPUT_CTRL_POINTS		16
+#define FETCHPOS(pi, i)		ip[i].PosIndex.xyz
+
+#endif
+
+HS_CNST_OUTPUT ConstantsHS( InputPatch<LS_OUTPUT, NR_INPUT_CTRL_POINTS> ip)
+{
+    HS_CNST_OUTPUT output = (HS_CNST_OUTPUT)0;
+    
+    for(int i=0; i<4; i++)
+	{
+		output.edge_ts[i] = g_fTessFactor;
+		output.insi_ts[i&1] = g_fTessFactor;
+	}
+
+#ifdef READ_VERTS_IN_HS
+	uint patch_index = ip[0].uPrimIndex;
+#else
+	uint patch_index = 0;		// don't need a real prim_index in this case
+#endif
+
+	for(int i=0; i<4; i++)
+	{
+#ifdef READ_VERTS_IN_HS
+		uint uVIndex = FETCHINDEX(patch_index, i);
+#else
+		uint uVIndex = asuint(ip[i].PosIndex.w);
+#endif
+		output.texCoord[i] = g_v2TexCoordinates[uVIndex];
+	}
+	
+    return output;
+}
+
+
+[DOMAIN_PATCH_TYPE("quad")]
+//[PARTITIONING_TYPE("fractional_odd")]
+[PARTITIONING_TYPE("integer")]
+[OUTPUT_TOPOLOGY_TYPE("triangle_cw")]
+#ifdef REG_PATCHES_SIXTEEN_THREADS
+[OUTPUT_CONTROL_POINTS(16)]
+#else
+[OUTPUT_CONTROL_POINTS(4)]
+#endif
+[PATCH_CONSTANT_FUNC("ConstantsHS")]
+[MAX_TESS_FACTOR(16.0)]
+HS_OUTPUT main( InputPatch<LS_OUTPUT, NR_INPUT_CTRL_POINTS> ip, uint uCPID : S_OUTPUT_CONTROL_POINT_ID )
+{  
+    HS_OUTPUT    output = (HS_OUTPUT)0;
+   
+   
+#ifdef READ_VERTS_IN_HS
+	uint patch_index = ip[0].uPrimIndex;
+#else
+	uint patch_index = 0;		// don't need a real prim_index in this case
+#endif
+
+#ifdef REG_PATCHES_SIXTEEN_THREADS
+	int i=uCPID/4;
+#else
+	int i=uCPID;
+#endif
+
+	const int prefix = 7 + i*3;
+	const int prefix_c = i==3 ? 4 : prefix;
+	const int prevprefix = 7 + ((i-1)&0x3)*3;
+	const int prevprefix_c = i==0 ? 4 : prevprefix;
+
+	const float3 PosRu = FETCHPOS(patch_index, (i+2)&0x3 );
+	const float3 PosRm = FETCHPOS(patch_index,  (i+1)&0x3 );
+	const float3 PosRd = FETCHPOS(patch_index,  prefix_c );
+
+	const float3 PosCu = FETCHPOS(patch_index,  (i+3)&0x3 );
+	const float3 PosCm = FETCHPOS(patch_index,  i );
+	const float3 PosCd = FETCHPOS(patch_index,  prefix-1 );
+
+	const float3 PosLu = FETCHPOS(patch_index,  prevprefix-1 );
+	const float3 PosLm = FETCHPOS(patch_index,  prevprefix_c );
+	const float3 PosLd = FETCHPOS(patch_index,  prevprefix_c+1 );
+
+
+#ifdef REG_PATCHES_SIXTEEN_THREADS
+	// 16 threads per patch. This does not seem to be any faster
+	int j=uCPID&3;
+
+	const int bit0 = j&1;
+	const int bit1 = j>>1;
+	const int and = bit0&bit1;
+	const int mask = -and;
+
+	const int xor = bit0^bit1;
+	const int ixor = 1-xor;
+	const int or = bit0|bit1;
+	const int ior = 1-or;
+	const int xbit0 = xor&bit0; 
+
+	// left column
+	const int Wlu = 1&mask;							// 0, 0, 0, 1
+	const int Wlm = 4&mask;							// 0, 0, 0, 4
+	const int Wld = 1&mask;							// 0, 0, 0, 1
+
+	// center column
+	const int Wcu = 2*(1+and)-xbit0;				// 2, 1, 2, 4
+	const int Wcm = (j + ixor)*4;					// 4, 4, 8, 16
+	const int Wcd = (1<<j)>>1;						// 0, 1, 2, 4
+	
+	// right column
+	const int Wru = xbit0+1;						// 1, 2, 1, 1
+	const int Wrm = (xor+bit0)*4 + ior*2;			// 2, 8, 4, 4
+	const int Wrd = xbit0+or;						// 0, 2, 1, 1
+
+	const int tmp = (bit1+bit0)*2 + ior;			// 1, 2, 2, 4
+	const int sum = tmp * 9;
+
+	
+	const float3 vAcc = Wcm*PosCm + Wlm*PosLm + Wld*PosLd + Wcd*PosCd + Wrd*PosRd + Wrm*PosRm + Wru*PosRu + Wcu*PosCu + Wlu*PosLu;
+	output.pos = vAcc / sum;
+
+	/*
+	j=3
+	1  4 1
+	4 16 4
+	1  4 1
+
+	j=2
+	0 2 1
+	0 8 4
+	0 2 1
+
+	j=1
+	0 1 2
+	0 4 8
+	0 1 2
+
+	j=0
+	0 2 1
+	0 4 2
+	0 0 0
+	*/
+
+#else
+	{
+		// inner
+		int valence_l = 4;
+		const float3 inner = (valence_l*PosCm+2*(PosRm + PosCu) + PosRu)/(5+valence_l);
+	
+		// corner
+		output.corner.xyz = ( 16*PosCm + 4*(PosRm+PosCu+PosLm+PosCd) + 1*(PosRu+PosLu+PosLd+PosRd) ) / 36;
+		
+		// edges
+		float div_l = 2 * valence_l + 10;
+		int valence_r = 4;
+		float div_r = 2 * valence_r + 10;
+
+		output.edge_l.xyz = (valence_l*2*PosCm + 4*PosRm + PosRu + PosCu*2 + 2*PosCd + PosRd) / div_l;
+		output.edge_r.xyz = (4*PosCm + valence_r*2*PosRm + PosRu*2 + PosCu + PosCd + 2*PosRd) / div_r;
+
+		// write inner
+		output.corner.w = inner.x;
+		output.edge_l.w = inner.y;
+		output.edge_r.w = inner.z;
+	}
+#endif
+ 
+  
+    return output;
+}

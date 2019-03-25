@@ -1,0 +1,26 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+#include "std_srtstructs.h"
+
+struct VS_OUTPUT
+{
+    float4 Pos : S_POSITION;
+};
+
+//--------------------------------------------------------------------------------------
+// Vertex Shader
+//--------------------------------------------------------------------------------------
+VS_OUTPUT main( float4 Pos : POSITION, VSSrt data : S_SRT_DATA )
+{
+    VS_OUTPUT output = (VS_OUTPUT)0;
+
+    output.Pos = mul( Pos, data.constants[0].world );
+    output.Pos = mul( output.Pos, data.constants[0].view );
+    output.Pos = mul( output.Pos, data.constants[0].projection );
+    return output;
+}

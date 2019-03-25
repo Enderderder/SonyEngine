@@ -1,0 +1,38 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "sh_outputs.hs"
+
+
+struct VS_INPUT
+{
+    float3 Position     : POSITION;
+    float3 Normal       : NORMAL;
+    float4 Tangent		: TEXCOORD0;
+    float2 TextureUV    : TEXCOORD1;
+};
+
+
+VS_OUTPUT main( VS_INPUT In )
+{
+	VS_OUTPUT Out;
+    
+    float3 vP = In.Position*g_fScale;
+	vP.x += g_fOffs;
+
+    float3 vN = In.Normal;
+
+	Out.vPosition = mul(float4(vP,1), g_mLocToProj);
+	Out.pos.xyz = mul(float4(vP,1), g_mLocToView).xyz;
+	Out.norm.xyz = mul(float4(vN,0), g_mLocToView).xyz;
+
+	Out.pos.w = In.TextureUV.x;
+	Out.norm.w = In.TextureUV.y;
+
+
+    return Out;
+}

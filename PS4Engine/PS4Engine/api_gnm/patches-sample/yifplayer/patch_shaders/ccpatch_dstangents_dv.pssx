@@ -1,0 +1,174 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2011 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+/* Optimized version of "Approximate Catmull-Clark" for irregular patches.
+ * This DOMAIN_PATCH_TYPE shader assumes only 8 tangent vectors were computed in the Hull Shader.
+ * The remaining 32-8 tangents, per patch, will be computed here.
+ * Thus the DOMAIN_PATCH_TYPE shader is longer but the LDS footprint of the patch threadgroup is smaller.
+ */
+
+ #define ACC_PATCHES
+
+#include "../../../toolkit/shader_common/shader_base.h"
+#include "../std_cbuffer.h"
+#include "../sh_outputs.hs"
+
+
+
+float3 bezier_eval( const float3 bezpatch[16], float4 polyU, float4 polyV )
+{
+    float3 res = 0;
+
+    res  = polyV.x * ( bezpatch[0] * polyU.x + bezpatch[1] * polyU.y + bezpatch[2] * polyU.z + bezpatch[3] * polyU.w );
+    res += polyV.y * ( bezpatch[4] * polyU.x + bezpatch[5] * polyU.y + bezpatch[6] * polyU.z + bezpatch[7] * polyU.w );
+    res += polyV.z * ( bezpatch[8] * polyU.x + bezpatch[9] * polyU.y + bezpatch[10] * polyU.z + bezpatch[11] * polyU.w );
+    res += polyV.w * ( bezpatch[12] * polyU.x + bezpatch[13] * polyU.y + bezpatch[14] * polyU.z + bezpatch[15] * polyU.w );
+    
+    return res;
+}
+
+
+// This is a subset of the Bernstein Polynomials. These are used for evaluation of a bezier patch surface.
+float4 bern_polynomials(float t)
+{
+    return float4( (1-t)*(1-t)*(1-t), 3.0f*t*(1-t)*(1-t), 3.0f*t*t*(1-t), t*t*t );
+}
+
+// the derivative of each polynomial
+float4 bern_polynomials_deriv(float t)
+{
+    return float4( -3*(1-t)*(1-t), 3*(1-t)*(1-t) - 6*t*(1-t), 6*t*(1-t) - 3*t*t, 3*t*t );
+}
+
+void CreateTangentPatches( const float4 vCW_in, const OutputPatch<HS_OUTPUT, 4> bezier_patch, out float3 Tangs[32]);
+
+
+[DOMAIN_PATCH_TYPE("quad")]
+VS_OUTPUT main( HS_CNST_OUTPUT input, float2 domainCoordinates : S_DOMAIN_LOCATION, const OutputPatch<HS_OUTPUT, 4> bezier_patch )
+{
+    VS_OUTPUT output = (VS_OUTPUT)0;
+
+	float2 uv;
+	uv.x = input.edge_ts[0]; // HACK to make warning go away
+	uv = domainCoordinates;
+	
+	// synthesize surface position
+	float4 polyU = bern_polynomials( uv.x );
+	float4 polyV = bern_polynomials( uv.y );
+
+	
+	
+	const float3 inner0 = float3(bezier_patch[0].corner.w, bezier_patch[0].edge_l.w, bezier_patch[0].edge_r.w);
+	const float3 inner1 = float3(bezier_patch[1].corner.w, bezier_patch[1].edge_l.w, bezier_patch[1].edge_r.w);
+	const float3 inner2 = float3(bezier_patch[2].corner.w, bezier_patch[2].edge_l.w, bezier_patch[2].edge_r.w);
+	const float3 inner3 = float3(bezier_patch[3].corner.w, bezier_patch[3].edge_l.w, bezier_patch[3].edge_r.w);
+	float3 positions[] = { bezier_patch[0].corner.xyz, bezier_patch[0].edge_l.xyz, bezier_patch[0].edge_r.xyz, bezier_patch[1].corner.xyz,
+						   bezier_patch[3].edge_r.xyz, inner0, inner1, bezier_patch[1].edge_l.xyz, 
+						   bezier_patch[3].edge_l.xyz, inner3, inner2, bezier_patch[1].edge_r.xyz, 
+						   bezier_patch[3].corner.xyz, bezier_patch[2].edge_r.xyz, bezier_patch[2].edge_l.xyz, bezier_patch[2].corner.xyz};
+						   
+	float3 surf_pos = bezier_eval( positions, polyU, polyV );
+	
+#if 0	// change this to 0 to disable ACC tangent patches (results in some lighting discontinuities but is faster)
+
+	const float4 vCW = input.vCWts;
+
+	float3 Tangs[32];
+    CreateTangentPatches( vCW, bezier_patch, Tangs);
+
+	float3 tanU[16]={Tangs[0], Tangs[1], Tangs[2], Tangs[3], 
+					Tangs[4], Tangs[5], Tangs[6], Tangs[7], 
+					Tangs[15], Tangs[14], Tangs[13], Tangs[12], 
+					Tangs[11], Tangs[10], Tangs[9], Tangs[8] };
+	float3 tanV[16]={Tangs[16+11], Tangs[16+15], Tangs[16+4], Tangs[16+0], 
+					Tangs[16+10], Tangs[16+14], Tangs[16+5], Tangs[16+1], 
+					Tangs[16+9], Tangs[16+13], Tangs[16+6], Tangs[16+2], 
+					Tangs[16+8], Tangs[16+12], Tangs[16+7], Tangs[16+3] };
+
+
+    float3 sigmaU = bezier_eval( tanU, polyU, polyV );
+    float3 sigmaV = bezier_eval( tanV, polyU, polyV );
+#else	
+	// synthesize first order derivatives
+	float4 deriv_polyU = bern_polynomials_deriv( uv.x );
+	float4 deriv_polyV = bern_polynomials_deriv( uv.y );
+	float3 sigmaU = bezier_eval( positions, deriv_polyU, polyV );
+	float3 sigmaV = bezier_eval( positions, polyU, deriv_polyV );
+#endif
+
+	// build and normalize the surface normal
+	float3 norm = normalize( cross(sigmaU, sigmaV) );
+
+
+	output.vPosition = mul( float4(surf_pos,1), g_mLocToProj );
+	output.pos.xyz = mul( float4(surf_pos,1), g_mLocToView).xyz;
+	output.norm.xyz = mul( float4(norm,0), g_mLocToView).xyz;
+
+    const float2 texC0 = float2(bezier_patch[0].tanu.w, bezier_patch[0].tanv.w);
+	const float2 texC1 = float2(bezier_patch[1].tanu.w, bezier_patch[1].tanv.w);
+	const float2 texC2 = float2(bezier_patch[2].tanu.w, bezier_patch[2].tanv.w);
+	const float2 texC3 = float2(bezier_patch[3].tanu.w, bezier_patch[3].tanv.w);
+
+	const float2 texST = texC0*(1-uv.x)*(1-uv.y) + texC1*uv.x*(1-uv.y) + texC2*uv.x*uv.y + texC3*(1-uv.x)*uv.y;
+	output.pos.w = texST.x;
+	output.norm.w = texST.y;
+
+	return output;
+}
+
+
+void CreateTangentPatches( const float4 vCW_in, const OutputPatch<HS_OUTPUT, 4> bezier_patch, out float3 Tangs[32])
+{
+	for(int i=0; i<4; i++)
+	{
+		const float3 inner0 = float3(bezier_patch[i].corner.w, bezier_patch[i].edge_l.w, bezier_patch[i].edge_r.w);
+		const float3 inner1 = float3(bezier_patch[(i+1)&0x3].corner.w, bezier_patch[(i+1)&0x3].edge_l.w, bezier_patch[(i+1)&0x3].edge_r.w);
+
+		float3 P02=bezier_patch[(i-1)&0x3].edge_l.xyz,																		P32=bezier_patch[(i+1)&0x3].edge_r.xyz;
+		float3 P01=bezier_patch[(i-1)&0x3].edge_r.xyz, P11=inner0, P21=inner1, P31=bezier_patch[(i+1)&0x3].edge_l.xyz;
+		float3 /*P00=bezier_patch[i].corner.xyz, */P10=bezier_patch[i].edge_l.xyz, P20=bezier_patch[i].edge_r.xyz/*, P30=bezier_patch[(i+1)&0x3].corner.xyz*/;
+		
+
+		const float3 tanU0 = bezier_patch[i].tanu.xyz;
+		const float3 tanV0 = bezier_patch[i].tanv.xyz;
+		const float3 tanU1 = bezier_patch[(i+1)&0x3].tanu.xyz;
+		const float3 tanV1 = bezier_patch[(i+1)&0x3].tanv.xyz;
+
+		float3 vLow = 3*(P20-P10);
+
+		const bool bSwap = (i&1)!=0;
+		const float fS0 = (i&2)==0 ? 1 : (-1);
+		const float3 tanU00 = fS0*(bSwap ? tanV0 : tanU0);
+		const float3 tanU30 = fS0*(bSwap ? tanV1 : tanU1);
+		const float3 tanU10 = (1*tanU00 + 2*vLow)/3;
+		const float3 tanU20 = (2*vLow + 1*tanU30)/3;
+
+		const float fS1 = ((i - 1) & 2)!=0 ? 1 : (-1);
+		const float3 tanV00 = fS1*(bSwap ? tanU0 : tanV0);
+		const float3 tanV30 = fS1*(bSwap ? tanU1 : tanV1);
+
+
+		float3 vUpL = 3*(P11-P01), vUpM = 3*(P21-P11), vUpR = 3*(P31-P21);
+
+		const float4 vCW = i==0 ? vCW_in : (i==1 ? vCW_in.yzwx : (i==2 ? vCW_in.zwxy : vCW_in.wxyz));
+ 
+		// sign flip
+		vUpL +=  (-1.0f/3.0)*(vCW[3]*tanV00 - 2.0f*vCW[0]*(3.0f*(P02-P01)));
+		vUpR += (-1.0f/3.0)*(2.0f*vCW[1]*(3.0f*(P32 - P31)) - vCW[2]*tanV30);
+
+		const int offs = (i&1)*16+(i&2)*4;
+
+		Tangs[offs+0] = fS0*tanU00; Tangs[offs+1] = fS0*tanU10; Tangs[offs+2] = fS0*tanU20; Tangs[offs+3] = fS0*tanU30;
+
+		const float3 tanU01 = vUpL;
+		const float3 tanU11 = (1*vUpL + 2*vUpM)/3;
+		const float3 tanU21 = (2*vUpM + 1*vUpR)/3;
+		const float3 tanU31 = vUpR;
+
+		Tangs[offs+4] = fS0*tanU01; Tangs[offs+5] = fS0*tanU11;Tangs[offs+6] = fS0*tanU21; Tangs[offs+7] = fS0*tanU31;
+	}
+
+}

@@ -1,0 +1,24 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "flatshader.h"
+
+struct VS_OUTPUT
+{
+	float4 Position : S_POSITION;
+};
+
+struct VS_INPUT
+{
+    float4 Position : POSITION;
+};
+
+VS_OUTPUT main( VS_INPUT input )
+{
+	VS_OUTPUT Output = (VS_OUTPUT)0;
+	Output.Position = mul(float4(input.Position.xy, 0, 1), m_modelViewProjection);
+	return Output;    
+}

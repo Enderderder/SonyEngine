@@ -1,0 +1,18 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+RW_Texture2D<float4> DestTex : register(u0);
+ConstantBuffer Constants : register(c0)
+{
+	float4 m_color;
+};
+
+[NUM_THREADS(8,8,1)]
+void main(uint2 position : S_DISPATCH_THREAD_ID)
+{
+	DestTex[position] = m_color;
+}
+

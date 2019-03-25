@@ -1,0 +1,42 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2011 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+/* Basic LS stage shader written such that it uses the smallest possible amount of LDS.
+ */
+
+#ifdef __PSSL__ // https://jira.usrd.scea.com/browse/PSSL-769
+#include "../std_cbuffer.h"
+#include "../sh_outputs.hs"
+#else
+#include "std_cbuffer.h"
+#include "sh_outputs.hs"
+#endif //__PSSL__
+
+struct VS_INPUT
+{
+#ifndef READ_VERTS_IN_HS
+    float3 Position     : POSITION;
+#endif
+	uint   uVertexID      : S_VERTEX_ID;
+};
+
+
+LS_OUTPUT main( VS_INPUT In )
+{
+	LS_OUTPUT Out;
+
+#ifndef READ_VERTS_IN_HS    
+    float3 vP = In.Position*g_fScale;
+	vP.x += g_fOffs;
+
+	Out.PosIndex.xyz = vP;
+	Out.PosIndex.w = asfloat(In.uVertexID);
+#else
+	Out.uPrimIndex = In.uVertexID;
+#endif
+
+    return Out;
+}

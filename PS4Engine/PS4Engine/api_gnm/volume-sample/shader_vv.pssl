@@ -1,0 +1,33 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+
+ConstantBuffer cbMeshSMapInstance
+{
+	Matrix4Unaligned m_modelViewProjection;
+	Matrix4Unaligned m_modelView;
+};
+
+
+
+struct VS_OUTPUT
+{
+    float4 Position     : S_POSITION;
+    float3 WorldPos	    : TEXCOORD0;
+};
+
+
+VS_OUTPUT main( float3 Position     : POSITION )
+{
+	VS_OUTPUT output;
+
+	output.Position = mul( float4(Position.xyz,1), m_modelViewProjection );
+	output.WorldPos = mul( float4(Position.xyz,1), m_modelView ).xyz;
+
+	return output;
+}

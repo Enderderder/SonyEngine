@@ -1,0 +1,96 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+#include "../toolkit/shader_common/illum.hs"
+#include "std_srtstructs.h"
+
+struct VS_OUTPUT
+{
+    float4 Pos : S_POSITION;
+    float4 NormView : TEXCOORD0;
+    float2 TexCoord : TEXCOORD1;
+    float4 PosLight : TEXCOORD2;
+	float4 PosView : TEXCOORD3;
+};
+
+//--------------------------------------------------------------------------------------
+// Pixel Shader
+//--------------------------------------------------------------------------------------
+float4 main( VS_OUTPUT input, PS2xTex2xSamplerSrt data : S_SRT_DATA ) : S_TARGET_OUTPUT
+{
+
+	float2 ShadowTexC = 0.5 * input.PosLight.xy / input.PosLight.w + float2( 0.5, 0.5 );
+    ShadowTexC.y = 1.0f - ShadowTexC.y;
+    	
+	float LightAmount;
+	{
+		unsigned int nWidth, nHeight;
+		data.srtData->txShadowMap.GetDimensions(nWidth, nHeight);
+
+		// transform to texel space
+        float2 texelpos = float2(nWidth, nHeight) * ShadowTexC;
+        
+        // Determine the lerp amounts           
+        float2 lerps = frac( texelpos );
+
+		float fZPos = (input.PosLight.z) / (input.PosLight.w);
+		fZPos = fZPos * 0.5 + 0.5;
+
+		#define SHADOW_EPSILON 0.0025f
+        float sourcevals[4];
+        sourcevals[0] = (data.srtData->txShadowMap.Sample( data.srtData->samShadow, ShadowTexC ).x + SHADOW_EPSILON < fZPos)? 0.0f: 1.0f;  
+        sourcevals[1] = (data.srtData->txShadowMap.Sample( data.srtData->samShadow, ShadowTexC + float2(1.0/nWidth, 0) ).x + SHADOW_EPSILON < fZPos)? 0.0f: 1.0f;  
+        sourcevals[2] = (data.srtData->txShadowMap.Sample( data.srtData->samShadow, ShadowTexC + float2(0, 1.0/nHeight) ).x + SHADOW_EPSILON < fZPos)? 0.0f: 1.0f;  
+        sourcevals[3] = (data.srtData->txShadowMap.Sample( data.srtData->samShadow, ShadowTexC + float2(1.0/nWidth, 1.0/nHeight) ).x + SHADOW_EPSILON < fZPos)? 0.0f: 1.0f;  
+       
+        // lerp between the shadow values to calculate our light amount
+		LightAmount = lerp( lerp( sourcevals[0], sourcevals[1], lerps.x ),
+	                                lerp( sourcevals[2], sourcevals[3], lerps.x ),
+                                  lerps.y );
+	
+		//if ((ShadowTexC.x < 0 || ShadowTexC.x > 1) || (ShadowTexC.y < 0 || ShadowTexC.y > 1))
+		//	LightAmount = 1;			
+	}
+	   
+    //float3 gLightDirection = float3(0,-1,0);
+    
+    // lighting.
+	// ambient + diffuse
+	float3 vtNormal = normalize(input.NormView.xyz);
+
+
+	//float lumiDiffuse = 0.2 + LightAmount * 0.8 * saturate(dot(vtNormal, -gLightDirection));
+	float3 diff_col = data.constants[0].lightColor.xyz * data.srtData->txDiffuse.Sample( data.srtData->samLinear, input.TexCoord ).xyz;//0.5*float3(0.8,0.86,1);
+	float3 spec_col = 0.3 * data.constants[0].lightColor.xyz;//0.2*float3(1,0.8,0.7);
+	float surf_roughness = 12;		// relative to phong
+	float3 vAmb = data.constants[0].ambientColor.xyz; // 0.1*diff_col;
+	float3 vV = normalize(-input.PosView.xyz);
+	float3 vL = normalize(data.constants[0].lightPosition.xyz-input.PosView.xyz);
+	float3 res = vAmb+LightAmount*BRDF_ts_nphong_nofr(vtNormal, vL, vV, diff_col, spec_col, surf_roughness);
+
+
+
+
+
+	// calculate fragment color.
+	float4 fragmentColor = float4(res.xyz, 1);
+	  
+	return fragmentColor; 
+	
+	/*
+	// show shadow map grid.
+	if(0.0 < gFunctionSwitch.y)
+	{
+		shadowMapCoord.xy /= shadowMapCoord.w;
+		if((floor(shadowMapCoord.x) == 0.0) && (floor(shadowMapCoord.y) == 0.0))
+		{
+			if(frac(shadowMapCoord.x * 32.0) < 1.0/32.0) fragmentColor.r = 1.0;
+			if(frac(shadowMapCoord.y * 32.0) < 1.0/32.0) fragmentColor.g = 1.0;
+		}
+	}
+	*/
+}

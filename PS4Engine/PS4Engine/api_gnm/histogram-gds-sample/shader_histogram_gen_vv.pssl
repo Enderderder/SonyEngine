@@ -1,0 +1,76 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "histogram_structs.h"
+
+ConstantBuffer constants
+{
+	HistogramConstants globals;
+};
+global_memory HistogramColorData colorHistogramGds;
+RegularBuffer<uint3> colorHistogramRWBuffer;
+
+VS_HISTOGRAM_OUTPUT main(uint id : S_VERTEX_ID)
+{
+	VS_HISTOGRAM_OUTPUT Output;
+
+	float4 barVertex = float4(0,0,0,1);
+	uint histogramSlot = id / 4;
+	uint barEdge = (id + 2) / 4;
+
+	/* The way histrogram bars are generated is as follows:
+	 *
+	 *     4   7
+	 *     +---+
+	 *     |   |8  11
+	 * 0  3|   +---+
+	 * +---+   |   |
+	 * |   |   |   |
+	 * |   |   |   |
+	 * +---+---+---+
+	 * 1  2 5 6 9  10
+	 *
+	 * Each bar is rendered as a quad with counter-clockwise vertex indices. Using
+	 * 4 vertices per bar, (vertex_id & 3) == 1, or == 2 are bottom, hence the y is
+	 * set to 0. The top of the bar is a log-base-2 of number of pixels in that
+	 * histogram slot.
+	 *
+	 */
+
+	if ((id & 3) == 1 || (id & 3) == 2)
+	{
+		// Vertex at the bottom of the bar
+		barVertex.y = 0;
+	}
+	else
+	{
+		// Vertex at the top of the bar
+		uint pixelCount;
+
+		// Is histogram data in GDS or RW buffer?
+		if (globals.g_dataInGds)
+		{
+			pixelCount = colorHistogramGds.pixelCount[histogramSlot][globals.g_histogramColorChannel];
+		}
+		else
+		{
+			pixelCount = colorHistogramRWBuffer[histogramSlot][globals.g_histogramColorChannel];
+		}
+
+		barVertex.y = log2((float)pixelCount) * globals.g_histogramBarVerticalScale;
+	}
+
+	barVertex.x = barEdge / (float)kNumHistogramColors;
+
+	// Transform the position from object space to homogeneous projection space
+	Output.Position = mul( barVertex, globals.g_mWorldViewProjection ); 
+
+	// Scale histogram bar color intensity by the histogram slot index
+	float3 color = globals.g_vHistogramColor.xyz * (histogramSlot + 1) / (float)kNumHistogramColors;
+	Output.Color = float4(color, 1);
+
+	return Output;    
+}

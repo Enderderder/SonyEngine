@@ -1,0 +1,240 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "comp_buildn_cbuffer.h"
+#include "../toolkit/shader_common/noise.hs"
+
+
+Texture2D gbuf_tex : register( t2 );
+Texture2D depth_tex : register( t3 );
+
+RW_Texture2D<float3> second_display : register( u1 );
+
+#define NR_THREADS	64
+
+#ifdef USE_EARLY_OUT
+thread_group_memory int g_iFoundNonZeroHeight;
+#endif
+
+void CalcSurfaceDerivatives(out float3 vSigmaS, out float3 vSigmaT, const float3 surf_norm, const float3 vPixCoord);
+
+// which group we are in relative to dispatch(): uint3 groupID : S_GROUP_ID
+// relative to actual num threads in group: uint3 threadID : S_GROUP_THREAD_ID
+// flattens S_GROUP_THREAD_ID into 1D: uint index : S_GROUP_INDEX
+
+// global thread id: uint3 globalID : S_DISPATCH_THREAD_ID
+
+[NUM_THREADS(NR_THREADS, 1, 1)]
+void main(uint threadID : S_GROUP_INDEX, uint3 groupID : S_GROUP_ID)
+{
+	int2 tile_pos = (int2) (groupID.xy * uint2(TILEX, TILEY));
+#ifdef USE_EARLY_OUT
+	int iGarbage;
+	g_iFoundNonZeroHeight = 0;
+#endif	
+	float height[16], depth[16];
+	const int X = 2*((int) (threadID % 8));
+	const int Y = 2*(((int) (threadID / 8))&0x7);
+
+	tile_pos += int2(X,Y);
+	const float bump_scale = 0.3;
+	bool bFoundNonZeroHeight = false;
+	for(int y=0; y<4; y++)
+		for(int x=0; x<4; x++)
+		{
+			const int2 pos = int2(tile_pos.x + x - 1, tile_pos.y + y - 1);
+			
+			float hght = bump_scale*gbuf_tex.Load(int3(pos, 0)).w;
+			float dpth = depth_tex.Load(int3(pos, 0)).x;
+		
+			height[y*4+x] = hght; depth[y*4+x] = dpth;
+
+			bFoundNonZeroHeight = bFoundNonZeroHeight || (hght>0.0);
+		}
+#ifdef USE_EARLY_OUT
+	ThreadGroupMemoryBarrierSync();		// make sure g_iFoundNonZeroHeight is set to 0
+	AtomicOr(g_iFoundNonZeroHeight, bFoundNonZeroHeight ? 1 : 0, iGarbage);
+	ThreadGroupMemoryBarrierSync();
+	if(g_iFoundNonZeroHeight!=0)
+#endif
+	{
+		const float4 C0 = g_mInvProj[0];
+		const float4 C1 = g_mInvProj[1];
+		const float4 C2 = g_mInvProj[2];
+		const float4 C3 = g_mInvProj[3];
+	
+		const float4 row2 = float4(C0.z, C1.z, C2.z, C3.z);
+		const float4 row3 = float4(C0.w, C1.w, C2.w, C3.w);
+
+		// reverse view space Z
+		float viewZ[16];
+		for(int y=0; y<4; y++)
+			for(int x=0; x<4; x++)
+			{
+				const int2 pos = int2(tile_pos.x + x - 1, tile_pos.y + y - 1);
+				const float fDpth = depth[y*4+x];
+				float3 vScrPos = float3(pos.x+0.5, pos.y+0.5, fDpth);
+				viewZ[y*4+x] = dot(float4(vScrPos, 1), row2) / dot(float4(vScrPos, 1), row3);
+			}
+		// build edge weights
+		float w0_l[16], w0_b[16];
+		for(int y=0; y<4; y++)
+			for(int x=0; x<4; x++)
+			{
+				// Get ViewZs stored in dBs
+				const float cenZ = viewZ[y*4+x];
+				const float fS = 0.2;
+
+				int x_l = x>0 ? (x-1) : x;
+				int y_b = y>0 ? (y-1) : y;
+
+				const float LftZ = viewZ[y*4+x_l];
+				float Dlft = LftZ - cenZ;
+				const float wgt_l = exp(-(Dlft*Dlft)*fS);		// fS small makes center height bleed less/slower into neighbors
+				w0_l[y*4+x] = wgt_l;
+		
+				const float BotZ = viewZ[y_b*4+x];				// fS small makes center height bleed less/slower into neighbors
+				float Dbot = BotZ - cenZ;
+				const float wgt_b = exp(-(Dbot*Dbot)*fS);
+				w0_b[y*4+x] = wgt_b;
+			}
+
+		// build derivatives
+		float dBs[16], dBt[16];
+		for(int y=0; y<4; y++)
+			for(int x=0; x<4; x++)
+			{
+				float height_c = height[y*4+x];
+				
+				int x_l = x>0 ? (x-1) : x;
+				int x_r = x<(4-1) ? (x+1) : x;
+				int y_b = y>0 ? (y-1) : y;
+				int y_t = y<(4-1) ? (y+1) : y;
+		
+				float Rhgt = lerp(height_c, height[y*4+x_r], w0_l[y*4+x_r]);
+				float Lhgt = lerp(height_c, height[y*4+x_l], w0_l[y*4+x]);
+				float dBs0 = 0.5*(Rhgt - Lhgt);
+				dBs[y*4+x] = dBs0;
+
+				float Thgt = lerp(height_c, height[y_t*4+x], w0_b[y_t*4+x]);
+				float Bhgt = lerp(height_c, height[y_b*4+x], w0_b[y*4+x]);
+				float dBt0 = 0.5*(Thgt - Bhgt);
+				dBt[y*4+x] = dBt0;
+			}
+
+		// Blur
+#if 1
+		float dBs_new[4], dBt_new[4];
+		for(int y=0; y<2; y++)
+			for(int x=0; x<2; x++)
+			{
+				const int x2 = x+1;
+				const int y2 = y+1;
+		
+				const int cen = y2*4+x2;
+				const int top = (y2+1)*4+x2;
+				const int bot = (y2-1)*4+x2;
+				const int lft = y2*4+x2-1;
+				const int rgt = y2*4+x2+1;
+		
+				float3 sobVert = float3(w0_b[cen], 2, w0_b[top]);
+				sobVert /= (sobVert.x+sobVert.y+sobVert.z);
+		
+				float3 sobHrz = float3(w0_l[cen], 2, w0_l[rgt]);
+				sobHrz /= (sobHrz.x+sobHrz.y+sobHrz.z);
+		
+				dBs_new[y*2+x] = dot(sobVert, float3(dBs[bot], dBs[cen], dBs[top]) );
+				dBt_new[y*2+x] = dot(sobHrz, float3(dBt[lft], dBt[cen], dBt[rgt]) );
+			}
+		for(int y=0; y<2; y++)	// copy back
+			for(int x=0; x<2; x++)
+			{ dBs[4*(y+1)+x+1]=dBs_new[y*2+x]; dBt[4*(y+1)+x+1]=dBt_new[y*2+x]; }
+#endif		
+
+
+		// Finally calculate the perturbed normal
+		for(int y=0; y<2; y++)
+			for(int x=0; x<2; x++)
+			{
+				const int2 pos = int2(tile_pos.x + x, tile_pos.y + y);
+		
+		#if 1
+				const int x2 = x+1;
+				const int y2 = y+1;
+
+				const float dBs0 = dBs[y2*4+x2];
+				const float dBt0 = dBt[y2*4+x2];
+				const float dpth = depth[y2*4+x2];
+		
+				float3 vVertN = gbuf_tex.Load(int3(pos, 0)).xyz;
+				vVertN = normalize(2*vVertN-1);
+		
+				float3 vPixCoord = float3(pos.x+0.5, pos.y+0.5, dpth);
+				float3 vSigmaS, vSigmaT;
+				CalcSurfaceDerivatives(vSigmaS, vSigmaT, vVertN, vPixCoord);
+		
+				// perturb
+				const float3 vN = PerturbNormalArbDomain(vSigmaS, vSigmaT, vVertN, dBs0, dBt0);
+				float3 tN = 0.5*vN+float3(0.5,0.5,0.5);
+				second_display[pos] = tN;
+			#else
+				second_display[pos] = 0.7; 
+				//second_display[pos] = float3(height[y2*4+x2], height[y2*4+x2], height[y2*4+x2]);
+			#endif
+			}
+	}
+#ifdef USE_EARLY_OUT
+	else
+	{
+		for(int y=0; y<2; y++)
+			for(int x=0; x<2; x++)
+			{
+				const int2 pos = int2(tile_pos.x + x, tile_pos.y + y);
+		
+				float3 tN = 0.5*float3(0,0,0)+float3(0.5,0.5,0.5);
+				second_display[pos] = tN;
+			}
+	}
+#endif
+}
+
+
+#define FLT_EPSILON     1.0e-05F        // small but non-zero cutoff value
+
+void CalcSurfaceDerivatives(out float3 vSigmaS, out float3 vSigmaT, const float3 surf_norm, const float3 vPixCoord)
+{
+	float4 pos_h = mul( float4(vPixCoord,1), g_mInvProj );
+	float3 pos = (1/pos_h.w) * pos_h.xyz;
+	
+	
+	float4 tplane = float4(surf_norm, -dot(surf_norm, pos));
+	float4 scrsp_tplane = mul(g_mInvProj, tplane);		// transform by inverse transposed to get to destination
+
+	
+	// determine intersection against plane in screen space
+	// z = - (A/C)x - (B/C)y - (D/C) 
+	//float4(s, t, - (A/C)s - (B/C)t - (D/C), 1);
+	
+	// determine derivative of this function in view space relative to screen pixels
+	const float Nz = (scrsp_tplane.z<0?(-1):1) * max(abs(scrsp_tplane.z), FLT_EPSILON);
+	const float k0 = -scrsp_tplane.x / Nz;
+	const float k1 = -scrsp_tplane.y / Nz;
+	const float k2 = -scrsp_tplane.w / Nz;
+	
+	const float4 C0 = g_mInvProj[0];
+	const float4 C1 = g_mInvProj[1];
+	const float4 C2 = g_mInvProj[2];
+	const float4 C3 = g_mInvProj[3];
+	
+	const float4 v0 = C0+k0*C2;
+	const float4 v1 = C1+k1*C2;
+	const float4 v2 = C3+k2*C2;
+	
+	// homogeneous intersection in view space: vX(s,t) = s*v0 + t*v1 + v2
+	const Vector4Unaligned vX = v0*vPixCoord.x + v1*vPixCoord.y + v2;
+	vSigmaS = (v0.xyz * vX.w - vX.xyz * v0.w) / (vX.w*vX.w);
+	vSigmaT = (v1.xyz * vX.w - vX.xyz * v1.w) / (vX.w*vX.w);
+}

@@ -1,0 +1,16 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2015 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+struct VSOUT
+{
+	float4 m_position : S_POSITION;
+	float4 m_color : TEXCOORD0;
+};
+
+float4 main(VSOUT input) : S_TARGET_OUTPUT
+{
+	return input.m_color;
+}

@@ -1,0 +1,38 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "shader_base.h"
+
+ConstantBuffer constants : register(c0)
+{
+	int m_cursorX;
+	int m_cursorY;
+	uint m_color;
+	int m_screenWidthInCharacters;
+	int m_windowX;
+	int m_windowY;
+	int m_windowWidth;
+	int m_windowHeight;
+}
+
+DataBuffer<uint> g_src : register(t0);
+RW_DataBuffer<uint> g_dest : register(u0);
+
+[NUM_THREADS(64,1,1)]
+void main( uint offset : S_DISPATCH_THREAD_ID )
+{
+	uint count;
+	g_src.GetDimensions(count);
+    if(offset >= count)
+	  return;
+	const int cursorX = m_cursorX + offset;
+	const int cursorY = m_cursorY;
+	if(cursorX < 0 || cursorX >= m_windowWidth || cursorY < 0 || cursorY >= m_windowHeight)
+		return;
+	const uint cell_index = ((m_windowY + cursorY) * m_screenWidthInCharacters) + (m_windowX + cursorX);
+	uint cell = m_color | g_src[offset];
+	g_dest[cell_index] = cell;
+}

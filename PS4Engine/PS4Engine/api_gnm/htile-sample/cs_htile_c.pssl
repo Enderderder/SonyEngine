@@ -1,0 +1,105 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "htile.hs"
+
+thread_group_memory uint gs_htile[ kThreadsPerWavefront ];
+thread_group_memory uint gs_minDepth;
+thread_group_memory uint gs_maxDepth;
+
+Texture2D<float> Input : register(t0);
+RW_DataBuffer<uint> Output : register(u0);
+
+[NUM_THREADS(kThreadsPerWavefront, 1, 1)]
+void main( uint3 threadID : S_GROUP_THREAD_ID, uint3 GroupID : S_GROUP_ID )
+{
+	const uint2 firstTileInMacroTile = uint2( GroupID.x * kTilesPerMacrotileWide, GroupID.y * kTilesPerMacrotileTall );
+	const uint2 pixel_in_tile  = uint2( threadID.x % kPixelsPerTileWide, threadID.x / kPixelsPerTileWide );
+	const uint2 pixelsPerTile = uint2( kPixelsPerTileWide, kPixelsPerTileTall );
+
+	// first, with one thread for each pixel of an 8x8 tile, calculate the min and max depths of 64 tiles, compress to 14 bits each, and store in LDS.
+
+	uint tile;
+	for( tile=0; tile<kThreadsPerWavefront; ++tile )
+	{	
+		const uint2 tile_in_buffer = firstTileInMacroTile + uint2( tile % kTilesPerMacrotileWide, tile / kTilesPerMacrotileWide ); // first all threads hit the same tile at once...
+		const uint2 pixel_in_buffer = tile_in_buffer * pixelsPerTile + pixel_in_tile;	
+		
+		const float depth = Input.Load( int3( pixel_in_buffer.x, pixel_in_buffer.y, 0 ) );
+		if( threadID.x == 0 )
+		{
+			gs_minDepth = asuint(depth);
+			gs_maxDepth = asuint(depth);
+		}
+		AtomicMin( gs_minDepth, asuint(depth) );
+		AtomicMax( gs_maxDepth, asuint(depth) );
+		if( threadID.x == 0 )
+		{
+			const uint minDepth = floor( asfloat(gs_minDepth) * 16382.99 );
+			const uint maxDepth = ceil ( asfloat(gs_maxDepth) * 16382.99 );
+			gs_htile[tile] = (maxDepth<<14) | minDepth;
+		}
+	}
+	
+	const Encoder encoder[] =
+	{		
+		{  0,  0, kThreeBitMask }, // direct encodings, three bits of information
+		{  0,  0, kThreeBitMask },
+		{  0,  0, kThreeBitMask },		
+		{  8,  0, kThreeBitMask }, // indirect encodings that hold three bits of information
+		{ 16,  1, kThreeBitMask },
+		{ 24,  2, kThreeBitMask },		
+		{ 32,  4, kTwoBitMask   }, // indirect encodings that hold two bits of information
+		{ 36,  5, kTwoBitMask   },
+		{ 40,  6, kTwoBitMask   },
+		{ 44,  7, kTwoBitMask   },
+		{ 48,  8, kTwoBitMask   },
+		{ 52,  9, kTwoBitMask   },
+		{ 56, 10, kTwoBitMask   }, 
+		{ 60, 11, kTwoBitMask   },
+	};
+	 
+	// then, with one thread for each of 64 tiles, encode the min and max depths as 32-bit htiles and store to buffer with tiled or linear layout.
+
+	tile = threadID.x;
+	const uint MinZ = ( gs_htile[tile] >>  0 ) & ((1<<14)-1); 
+	const uint MaxZ = ( gs_htile[tile] >> 14 ) & ((1<<14)-1);
+
+	uint htile = 0;
+	if( ps_format.x == kHTileFormatNoStencil )
+	{
+		htile = ( MaxZ << 18 ) | ( MinZ << 4 ) | kZMaskExpanded;
+	}
+	else
+	{
+		const uint delta = MaxZ - MinZ;
+		const uint first = FIRSTBITHIGH_SLOW( delta );
+		const uint encoded = encoder[first].base + ( ( delta >> encoder[first].shift ) & encoder[first].mask );
+		switch( ps_format.x )
+		{
+		case kHTileFormatStencilMaxZ:
+			htile = ( MaxZ << 18 ) | ( encoded << 12 ) | kZMaskExpanded;
+			break;
+		case kHTileFormatStencilMinZ:
+			htile = ( MinZ << 18 ) | ( encoded << 12 ) | kZMaskExpanded;		
+			break;
+		}
+	}
+
+	const uint2 tile_in_buffer = firstTileInMacroTile + uint2( tile % kTilesPerMacrotileWide, tile / kTilesPerMacrotileWide ); // later, each thread gets its own tile.
+	
+	uint htileOffset = 0;
+	switch( ps_layout.x )
+	{
+	case kHTileLayoutLinear:
+		htileOffset = HtileOffsetInDwords(tile_in_buffer.x, ps_tiles.x, tile_in_buffer.y, true, ps_tiles.z);
+		break;
+	case kHTileLayoutTiled:
+		htileOffset = HtileOffsetInDwords(tile_in_buffer.x, ps_tiles.x, tile_in_buffer.y, false, ps_tiles.z);
+		break;
+	}	
+	Output[htileOffset] = htile;
+}

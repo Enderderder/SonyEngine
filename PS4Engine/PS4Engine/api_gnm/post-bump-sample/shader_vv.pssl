@@ -1,0 +1,51 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+
+
+struct VS_INPUT
+{
+    float3 Position     : POSITION;
+    float3 Normal       : NORMAL;
+    float4 Tangent		: TEXCOORD0;
+    float2 TextureUV    : TEXCOORD1;
+};
+
+
+
+VS_OUTPUT main( VS_INPUT input )
+{
+	VS_OUTPUT Output;
+	//float3 vNormalWorldSpace;
+	
+	const float3 vP = 40*input.Position.xyz;
+
+	// Transform the position from object space to homogeneous projection space
+	Output.Position = mul( float4(vP,1), g_mWorldViewProjection );	// dot products when the matrix is on the right side
+	
+	float3 vN = input.Normal;
+	float3 vT = input.Tangent.xyz;
+	float3 vB = input.Tangent.w * cross(vN, vT);
+	
+	Output.Tangent = vT;
+	Output.BiTangent = vB;
+
+	// untransformed position & normal
+	Output.vLocPos = vP.xyz;
+	//Output.vLocNrm = input.Normal;
+	Output.vVSpaceNorm = normalize(mul(input.Normal, (float3x3)g_mLocalToView));
+	
+	// Transform the normal from object space to world space    
+	//vNormalWorldSpace = normalize(mul(input.Normal, (float3x3)g_mWorld)); // normal (world space)
+
+
+	// Just copy the texture coordinate through
+	Output.TextureUV = float2(input.TextureUV.x,1-input.TextureUV.y); 
+
+	return Output;    
+}

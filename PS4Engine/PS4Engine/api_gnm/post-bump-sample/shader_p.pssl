@@ -1,0 +1,22 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+
+
+Texture2D height_tex : register( t2 );
+SamplerState g_linSampler : register( s2 );
+
+
+// raterization pass. Return geometric normal and height value.
+float4 main( VS_OUTPUT In ) : S_TARGET_OUTPUT
+{
+	float3 unit_normal = 0.5*normalize(In.vVSpaceNorm.xyz)+0.5;	// view space
+	
+	float height = height_tex.Sample( g_linSampler, In.TextureUV.xy ).x;
+	return float4(unit_normal.x, unit_normal.y, unit_normal.z, height);
+}

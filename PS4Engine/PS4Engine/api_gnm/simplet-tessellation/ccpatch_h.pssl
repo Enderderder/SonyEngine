@@ -1,0 +1,55 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "sh_outputs.hs"
+
+#define TESS_FACTOR		4.1
+
+HS_CNST_OUTPUT ConstantsHS( /*InputPatch<VS_OUTPUT, NUM_INPUT_CTRL_POINTS_PER_PATCH> p, uint PatchID : S_PRIMITIVE_ID*/ )
+{
+    HS_CNST_OUTPUT output;
+    
+    output.edge_ts[0] = TESS_FACTOR;	// left
+    output.edge_ts[1] = TESS_FACTOR;	// bottom
+    output.edge_ts[2] = TESS_FACTOR;	// right
+    output.edge_ts[3] = TESS_FACTOR;	// top
+    output.insi_ts[0] = TESS_FACTOR;	// upper and lower
+    output.insi_ts[1] = TESS_FACTOR;	// left and right
+
+    return output;
+}
+
+[DOMAIN_PATCH_TYPE("quad")]
+[PARTITIONING_TYPE("fractional_odd")]
+//[PARTITIONING_TYPE("integer")]
+[OUTPUT_TOPOLOGY_TYPE("triangle_cw")]
+[OUTPUT_CONTROL_POINTS(4)]
+[PATCH_CONSTANT_FUNC("ConstantsHS")]
+//[MAX_TESS_FACTOR(11.0)]
+[MAX_TESS_FACTOR(16.0)]
+HS_OUTPUT main(InputPatch<VS_OUTPUT, NUM_INPUT_CTRL_POINTS_PER_PATCH> inputPatch, uint uCPID : S_OUTPUT_CONTROL_POINT_ID, uint patch_index_in : S_PRIMITIVE_ID )
+{
+    HS_OUTPUT    output = (HS_OUTPUT)0;
+    
+    // Copy inputs to outputs
+    //output.texCoord =  inputPatch[uCPID].texCoord;
+    
+  uint patch_index = inputPatch[uCPID].fake_prim_index; // bogus, exists only to suppress a warning
+  patch_index = patch_index_in;
+  
+  int i = patch_index%NUMSEGS_X;
+  int j = patch_index/NUMSEGS_X;
+
+  int x = i + ((uCPID==0 || uCPID==3) ? 0 : 1);
+  int y = j + ((uCPID<2) ? 0 : 1);
+  const uint2 P = uint2(x,y);
+  
+  output.texCoord = 2*(((float2) P)/float2(NUMSEGS_X,NUMSEGS_Y))-float2(1,1);
+  output.color = ((float) patch_index) / (NUMSEGS_X*NUMSEGS_Y-1);
+
+  return output;
+}

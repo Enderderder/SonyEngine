@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|ORBIS">
+      <Configuration>Debug</Configuration>
+      <Platform>ORBIS</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ORBIS">
+      <Configuration>Release</Configuration>
+      <Platform>ORBIS</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>neo-4k-sample</ProjectName>
+    <ProjectGuid>{644C5F99-F058-45B1-9635-10B4D70C152F}</ProjectGuid>
+    <RootNamespace>dkdev</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <GnmProjectType>Sample</GnmProjectType>
+  </PropertyGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+    <Import Project="$(SolutionDir)\SceGnm.props" Condition="Exists('$(SolutionDir)\SceGnm.props')" />
+    <Import Project="$(SCE_ORBIS_SDK_DIR)\host_tools\msbuild\SceGnm.props" Condition="!Exists('$(SolutionDir)\SceGnm.props')" />
+  </ImportGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'" Label="Configuration" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'" Label="Configuration" />
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.40219.1</_ProjectFileVersion>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'" />
+  <ItemGroup>
+    <ClCompile Include="neo-4k-sample.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <PSSL Include="alpha_depth_only_p.pssl" />
+    <PSSL Include="alpha_depth_only_vv.pssl" />
+    <PSSL Include="blit_c.pssl" />
+    <PSSL Include="checkerboard_resolve_c.pssl">
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'">-I"$(SCE_ORBIS_SDK_DIR)\target\src\neo4k" %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'">-I"$(SCE_ORBIS_SDK_DIR)\target\src\neo4k" %(AdditionalOptions)</AdditionalOptions>
+    </PSSL>
+    <PSSL Include="fxaa2_p.pssl" />
+    <PSSL Include="fxaa2_vv.pssl" />
+    <PSSL Include="geometry_resolve_c.pssl">
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'">-I"$(SCE_ORBIS_SDK_DIR)\target\src\neo4k" %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'">-I"$(SCE_ORBIS_SDK_DIR)\target\src\neo4k" %(AdditionalOptions)</AdditionalOptions>
+    </PSSL>
+    <PSSL Include="passthrough_p.pssl" />
+    <PSSL Include="phong_alpha_test_p.pssl" />
+    <PSSL Include="phong_p.pssl" />
+    <PSSL Include="shadow_p.pssl" />
+    <PSSL Include="shadow_vv.pssl" />
+    <PSSL Include="smaa_blend_p.pssl" />
+    <PSSL Include="smaa_blend_vv.pssl" />
+    <PSSL Include="smaa_blend_weight_p.pssl" />
+    <PSSL Include="smaa_blend_weight_vv.pssl" />
+    <PSSL Include="smaa_edge_detection_p.pssl" />
+    <PSSL Include="smaa_edge_detection_vv.pssl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="data\scene.h" />
+    <ClInclude Include="phong_p.h" />
+    <ClInclude Include="smaa_porting.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <PSSL Include="phong_vv.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <PSSL Include="skybox_p.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <PSSL Include="skybox_vv.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+  </ItemGroup>
+  <ItemGroup>
+    <PSSL Include="bloom_composite_p.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <PSSL Include="gaussian_blur_h_p.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <PSSL Include="gaussian_blur_v_p.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <PSSL Include="radial_blur_p.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+  </ItemGroup>
+  <ItemGroup>
+    <PSSL Include="fullscreen_vv.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+  </ItemGroup>
+  <ItemGroup>
+    <PSSL Include="bright_pass_p.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+  </ItemGroup>
+  <ItemGroup>
+    <PSSL Include="copy_expanded_htile_c.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="smaa.hlsl" />
+  </ItemGroup>
+  <ItemGroup>
+    <PSSL Include="alpha_depth_only_mask_p.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <PSSL Include="alpha_depth_only_mask_vv.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(SolutionDir)\SceGnm.targets" Condition="Exists('$(SolutionDir)\SceGnm.targets')" />
+  <Import Project="$(SCE_ORBIS_SDK_DIR)\host_tools\msbuild\SceGnm.targets" Condition="!Exists('$(SolutionDir)\SceGnm.targets')" />
+</Project>

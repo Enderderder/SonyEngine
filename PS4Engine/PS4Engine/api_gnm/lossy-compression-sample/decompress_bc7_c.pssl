@@ -1,0 +1,65 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "codec.hs"
+#include "bc7.hs"
+
+[NUM_THREADS(8, 8, 1)]
+void main(int2 threadID : S_GROUP_THREAD_ID, int2 groupID : S_GROUP_ID)
+{
+    const int2 blockID = (groupID * 8 + threadID);
+    const int2 texelID = blockID * 4;
+    const uint thread = threadID.y * 8 + threadID.x;
+    MinMax minmax = findMinMax(texelID);
+    Endpoints endpoints = findEndpoints(minmax, texelID);
+    uint e0 = encodeEndpointBc7(endpoints.a);
+    uint e1 = encodeEndpointBc7(endpoints.b);
+
+    if(thread >= 32) 
+    {
+        const uint4 index = g_compressedMip0[blockID];
+        temp[(thread - 32) * 2 + 0] = index.xy;
+        temp[(thread - 32) * 2 + 1] = index.zw;
+    }
+
+    uint4 block = 0;
+    block.zw = temp[thread];
+
+    const bool swapped = (block.z & 8) == 8;
+    if(swapped)
+    {
+        e0 ^= e1;
+        e1 ^= e0;
+        e0 ^= e1;
+        block.z = 0xFFFFFFFF - block.z;
+        block.w = 0xFFFFFFFF - block.w;
+    }
+    block.z = ((block.z << 1) & 0x0000000F) | (block.z & 0xFFFFFFF0);
+    const uint r0 = (e0 >>  1) & 127;
+    const uint g0 = (e0 >>  9) & 127;
+    const uint b0 = (e0 >> 17) & 127;
+    const uint a0 = (e0 >> 25) & 127;
+    const uint p0 =  e0        &   1;
+    const uint r1 = (e1 >>  1) & 127;
+    const uint g1 = (e1 >>  9) & 127;
+    const uint b1 = (e1 >> 17) & 127;
+    const uint a1 = (e1 >> 25) & 127;
+    const uint p1 =  e1        &   1;
+    block.x  =  1 <<      6;
+    block.x |= r0 <<      7;
+    block.x |= r1 <<     14;
+    block.x |= g0 <<     21;
+    block.x |= g1 <<     28;
+    block.y  = g1 >> (32-28);
+    block.y |= b0 <<      3;
+    block.y |= b1 <<     10;
+    block.y |= a0 <<     17;
+    block.y |= a1 <<     24;
+    block.y |= p0 <<     31;
+    block.z |= p1 <<      0;
+    g_compressedMip0[blockID] = block;
+}
+

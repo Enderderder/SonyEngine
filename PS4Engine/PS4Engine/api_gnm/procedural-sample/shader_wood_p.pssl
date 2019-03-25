@@ -1,0 +1,83 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+#include "../toolkit/shader_common/illum.hs"
+#include "wood2.hs"
+
+
+
+
+
+float4 main( VS_OUTPUT In ) : S_TARGET_OUTPUT
+{
+	float3 unit_normal = normalize(In.vLocNrm.xyz);
+	float3 vL = normalize(g_vLightPos-In.vLocPos);
+	float3 vL2 = normalize(g_vLightPos2-In.vLocPos);
+	float3 vV = normalize(g_vCamPos-In.vLocPos);
+	
+	float3 diff_col, spec_col;
+	//spec_col = (192/255.0) * float3(1,1,1);
+
+
+	// determine wood color
+	const float fS = 0.25*0.003 * 8*45;
+	const float3 vP = fS*In.vLocPos;		
+	//wood(diff_col, spec_col, 1*vP);
+
+	const float ringscale = 15;
+	const float3 lightwood = float3(0.69, 0.5, 0.3);
+	//const float3 lightwood = float3(0.69, 0.44, 0.25);
+	const float3 darkwood  = float3(0.35, 0.22, 0.08);
+	wood2(diff_col, spec_col, 2*vP, ringscale, lightwood, darkwood);
+	spec_col *= float3(0.75,0.9,1);
+
+
+	// create dents
+	int dent_pow = 3;
+	const float fS2 = 10;//2*2*0.25*0.003 * 8*45;
+	const float3 vP2 = fS2*In.vLocPos;		
+	float fPixSize = GetPixelSize(vP2);
+	float4 height4 = dfractalsum(vP2, fPixSize);
+	
+	height4 *= 0.5; height4.x += 0.5;
+	
+	float fTmp = pow(height4.x,(dent_pow-1));
+	height4.x = fTmp*height4.x;	// pow of dent_pow
+	height4.yzw *= (dent_pow*fTmp);
+	height4 *= -1.5*1.5;
+	height4 *= 2*(4*0.005);
+	float3 vN = unit_normal;
+	vN = PerturbNormal2(vN, height4.yzw);
+
+
+	// do lighting
+	float Kd = 0.7;//0.4;
+	//float Ks = 0.1;
+	const float Ks[] = {0.2, 0.1};
+	float surf_roughness = 16;		// relative to phong
+	
+	float fNormWorldY = 0.5*mul(vN, (float3x3)g_mWorld).y+0.5;
+	float3 vAmb = 0.68*0.4*0.2*lerp( float3(0.15,0.35,0.2), float3(0.2,0.3,1), fNormWorldY);
+	
+	float3 vDiff = 0;
+	float3 vLgtDir[] = {vL, vL2};
+	float3 vLgtCols[] = {0.8*float3(1,1,1), 1.3*float3(1,1,1)};
+	//const float m = toBeckmannParam(surf_roughness);
+	for(int k=0; k<2; k++)
+		//vDiff += vLgtCols[k]*BRDF2(vN, unit_normal, vLgtDir[k], vV, diff_col, spec_col);
+		vDiff += vLgtCols[k]*BRDF2_ts_nphong(vN, unit_normal, vLgtDir[k], vV, Kd*diff_col, Ks[k]*spec_col, surf_roughness);
+	float3 res = vDiff+vAmb;
+
+	float Ka = 0.05;
+	res += Ka*diff_col;
+
+	float Ke = 0.25*1.4*1.5*(33/255.0);
+	res += Ke;
+
+	return float4(res,1);
+}

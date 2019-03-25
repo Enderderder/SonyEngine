@@ -1,0 +1,42 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+struct VS_OUT
+{
+	float4 position : S_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+Texture2D<float4> g_texture;
+SamplerState g_sampler;
+
+float4 main( VS_OUT input ) : S_TARGET_OUTPUT
+{
+	const float4 outofRange = float4(0,0,0,1);
+	const float4 background = float4(0.0697,0.3063,0.6870,1);
+	uint mipLevel=0;
+	uint width;
+	uint height;
+	uint numMips;
+	int miplevel;
+	g_texture.GetDimensions( mipLevel, width, height, numMips);
+	if(input.uv.x>(2.0/3))
+	{
+		miplevel=int(-log2(input.uv.y*.5));
+		input.uv.x = (input.uv.x*3 - 2) * (1<<(miplevel-1));
+		input.uv.y = (input.uv.y * (1<<(miplevel))- 1);
+	}else
+	{
+		miplevel = 0;
+		input.uv.x*=(3.0/2); // values from 0-2/3 should be scaled by 3/2 to be mapped to 0 1
+	}
+	if((miplevel>=numMips)||(input.uv.x>1))
+	{
+		return outofRange;	
+	}
+	float4 color = g_texture.SampleLOD(g_sampler, input.uv, miplevel);
+	return background + (color - background)*color.a;
+}

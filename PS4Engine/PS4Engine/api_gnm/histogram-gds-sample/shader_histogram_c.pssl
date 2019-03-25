@@ -1,0 +1,116 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "histogram_structs.h"
+
+// USE_LDS and USE_GDS must be defined.
+#ifndef USE_GDS
+	#error "USE_GDS is undefined."
+#endif
+
+#ifndef USE_LDS
+	#error "USE_LDS is undefined."
+#endif
+
+Texture2D inputTexture;
+
+#if USE_GDS
+	global_memory HistogramColorData colorHistogramGds;
+#else
+	RW_DataBuffer<uint3> colorHistogramRWBuffer;
+#endif
+
+#if USE_LDS
+	thread_group_memory HistogramColorData colorHistogramLds;
+#endif
+
+[NUM_THREADS(64, 1, 1)]
+void main( uint3 threadID : S_DISPATCH_THREAD_ID,  uint3 threadGroupID : S_GROUP_THREAD_ID )
+{
+	// Get texture dimensions
+	uint textureWidth, textureHeight;
+	inputTexture.GetDimensions(textureWidth, textureHeight);
+
+#if USE_LDS
+	// Clear LDS memory if using LDS, since there are 64 threads
+	// per group, each thread clears 256 / 64 = 4 color cells.
+	colorHistogramLds.pixelCount[threadGroupID.x * 4 + 0][0] = 0;
+	colorHistogramLds.pixelCount[threadGroupID.x * 4 + 1][0] = 0;
+	colorHistogramLds.pixelCount[threadGroupID.x * 4 + 2][0] = 0;
+	colorHistogramLds.pixelCount[threadGroupID.x * 4 + 3][0] = 0;
+	colorHistogramLds.pixelCount[threadGroupID.x * 4 + 0][1] = 0;
+	colorHistogramLds.pixelCount[threadGroupID.x * 4 + 1][1] = 0;
+	colorHistogramLds.pixelCount[threadGroupID.x * 4 + 2][1] = 0;
+	colorHistogramLds.pixelCount[threadGroupID.x * 4 + 3][1] = 0;
+	colorHistogramLds.pixelCount[threadGroupID.x * 4 + 0][2] = 0;
+	colorHistogramLds.pixelCount[threadGroupID.x * 4 + 1][2] = 0;
+	colorHistogramLds.pixelCount[threadGroupID.x * 4 + 2][2] = 0;
+	colorHistogramLds.pixelCount[threadGroupID.x * 4 + 3][2] = 0;
+#endif // USE_LDS
+
+	// Make sure this thread is in-bounds of input texture
+	if ((threadID.x < textureWidth) && (threadID.y < textureHeight))
+	{
+		// Convert texture color into histogram index for each channel
+		float4 textureValue = inputTexture[threadID.xy];
+		uint histogramRed = (uint)(textureValue.r * (kNumHistogramColors - 1));
+		uint histogramGreen = (uint)(textureValue.g * (kNumHistogramColors - 1));
+		uint histogramBlue = (uint)(textureValue.b * (kNumHistogramColors - 1));
+		uint countRed = 1, countGreen = 1, countBlue = 1;
+
+	#if USE_LDS
+		//__ds_add_u32(histogramRed * 12, 1, 0);
+		//__ds_add_u32(histogramGreen * 12, 1, 4);
+		//__ds_add_u32(histogramBlue * 12, 1, 8);
+		// Atomically update color counts in LDS
+		AtomicAdd(colorHistogramLds.pixelCount[histogramRed][0], 1);
+		AtomicAdd(colorHistogramLds.pixelCount[histogramGreen][1], 1);
+		AtomicAdd(colorHistogramLds.pixelCount[histogramBlue][2], 1);
+
+		// Do atomic swap with 0 such that only non-zero counts are written to GDS
+		AtomicExchange(colorHistogramLds.pixelCount[histogramRed][0], 0, countRed);
+		AtomicExchange(colorHistogramLds.pixelCount[histogramGreen][1], 0, countGreen);
+		AtomicExchange(colorHistogramLds.pixelCount[histogramBlue][2], 0, countBlue);
+		//countRed = __ds_wrxchg_rtn_b32(histogramRed * 12, 0, 0);
+		//countGreen = __ds_wrxchg_rtn_b32(histogramGreen * 12, 0, 4);
+		//countBlue = __ds_wrxchg_rtn_b32(histogramBlue * 12, 0, 8);
+	#endif // USE_LDS
+
+	#if USE_GDS
+		// Atomically update color counts in GDS
+		if (countRed)
+		{
+			AtomicAdd(colorHistogramGds.pixelCount[histogramRed][0], countRed);
+		}
+
+		if (countGreen)
+		{
+			AtomicAdd(colorHistogramGds.pixelCount[histogramGreen][1], countGreen);
+		}
+
+		if (countBlue)
+		{
+			AtomicAdd(colorHistogramGds.pixelCount[histogramBlue][2], countBlue);
+		}
+	#else // USE_GDS
+		// Atomically update color counts in RW buffer
+		if (countRed)
+		{
+			AtomicAdd(colorHistogramRWBuffer[histogramRed][0], countRed);
+		}
+
+		if (countGreen)
+		{
+			AtomicAdd(colorHistogramRWBuffer[histogramGreen][1], countGreen);
+		}
+
+		if (countBlue)
+		{
+			AtomicAdd(colorHistogramRWBuffer[histogramBlue][2], countBlue);
+		}
+	#endif
+	}
+}

@@ -1,0 +1,93 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|ORBIS">
+      <Configuration>Debug</Configuration>
+      <Platform>ORBIS</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ORBIS">
+      <Configuration>Release</Configuration>
+      <Platform>ORBIS</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>patches-sample</ProjectName>
+    <ProjectGuid>{0C56611D-7405-43F1-A018-2253E529CA68}</ProjectGuid>
+    <RootNamespace>dkdev</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <GnmProjectType>Sample</GnmProjectType>
+  </PropertyGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+    <Import Project="$(SolutionDir)\SceGnm.props" Condition="Exists('$(SolutionDir)\SceGnm.props')" />
+    <Import Project="$(SCE_ORBIS_SDK_DIR)\host_tools\msbuild\SceGnm.props" Condition="!Exists('$(SolutionDir)\SceGnm.props')" />
+  </ImportGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'" Label="Configuration" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'" Label="Configuration" />
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.40219.1</_ProjectFileVersion>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'" />
+  <ItemGroup>
+    <ClCompile Include="patches-sample.cpp" />
+    <ClCompile Include="yifplayer\yif.cpp" />
+    <ClCompile Include="yifplayer\yif2gpu_reader.cpp" />
+    <ClCompile Include="yifplayer\yif_reader.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="std_cbuffer.h" />
+    <ClInclude Include="yifplayer\std_cbuffer.h" />
+    <ClInclude Include="yifplayer\yif.h" />
+    <ClInclude Include="yifplayer\yif2gpu_reader.h" />
+    <ClInclude Include="yifplayer\yif_reader.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="yifplayer\patch_shaders\ccpatchirreg_h.pssx" />
+    <None Include="yifplayer\patch_shaders\ccpatch_dstangents_dv.pssx" />
+    <None Include="yifplayer\patch_shaders\ccpatch_hstangents_dv.pssx" />
+    <None Include="yifplayer\patch_shaders\gpatchirreg_h.pssx" />
+    <None Include="yifplayer\patch_shaders\gpatch_dv.pssx" />
+    <None Include="yifplayer\patch_shaders\LSshader_vl.pssx" />
+    <None Include="yifplayer\patch_shaders\patchbez_dv.pssx" />
+    <None Include="yifplayer\patch_shaders\patchreg_h.pssx" />
+    <None Include="yifplayer\sh_outputs.hs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PSSL Include="shader_lit_p.pssl" />
+    <PSSL Include="shader_p.pssl" />
+    <PSSL Include="yifplayer\acc_dtangents\ccpatchirreg_dv.pssl" />
+    <PSSL Include="yifplayer\acc_dtangents\ccpatchirreg_h.pssl" />
+    <PSSL Include="yifplayer\acc_dtangents\ccpatchirreg_hsvert_h.pssl" />
+    <PSSL Include="yifplayer\acc_htangents\ccpatchirreg_dv.pssl" />
+    <PSSL Include="yifplayer\acc_htangents\ccpatchirreg_h.pssl" />
+    <PSSL Include="yifplayer\acc_htangents\ccpatchirreg_hsvert_h.pssl" />
+    <PSSL Include="yifplayer\greg_patches\gpatchirreg_h.pssl" />
+    <PSSL Include="yifplayer\greg_patches\gpatchirreg_hsvert_h.pssl" />
+    <PSSL Include="yifplayer\greg_patches\gpatch_dv.pssl" />
+    <PSSL Include="yifplayer\LSshader_hsvert_vl.pssl" />
+    <PSSL Include="yifplayer\LSshader_vl.pssl" />
+    <PSSL Include="yifplayer\LSskinning_vl.pssl" />
+    <PSSL Include="yifplayer\reg_patches\patchbez_16threads_dv.pssl" />
+    <PSSL Include="yifplayer\reg_patches\patchbez_dv.pssl" />
+    <PSSL Include="yifplayer\reg_patches\patchreg_16threads_h.pssl" />
+    <PSSL Include="yifplayer\reg_patches\patchreg_16threads_hsvert_h.pssl" />
+    <PSSL Include="yifplayer\reg_patches\patchreg_h.pssl" />
+    <PSSL Include="yifplayer\reg_patches\patchreg_hsvert_h.pssl" />
+    <PSSL Include="yifplayer\shader_vv.pssl" />
+    <PSSL Include="yifplayer\skinningCC_c.pssl" />
+    <PSSL Include="yifplayer\skinning_c.pssl" />
+    <PSSL Include="yifplayer\skinning_vv.pssl" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(SolutionDir)\SceGnm.targets" Condition="Exists('$(SolutionDir)\SceGnm.targets')" />
+  <Import Project="$(SCE_ORBIS_SDK_DIR)\host_tools\msbuild\SceGnm.targets" Condition="!Exists('$(SolutionDir)\SceGnm.targets')" />
+</Project>

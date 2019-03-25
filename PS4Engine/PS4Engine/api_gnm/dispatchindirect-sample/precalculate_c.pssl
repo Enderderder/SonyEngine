@@ -1,0 +1,18 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+Texture2D<float> g_texture : register(t0);
+RW_DataBuffer<uint> g_indirect : register(u0);
+
+[NUM_THREADS(1, 1, 1)]
+void main()
+{
+	uint2 dimensions;
+	g_texture.GetDimensions(dimensions.x, dimensions.y);
+	g_indirect[0] = dimensions.x / 8;
+	g_indirect[1] = dimensions.y / 8;
+	g_indirect[2] = 1;
+}

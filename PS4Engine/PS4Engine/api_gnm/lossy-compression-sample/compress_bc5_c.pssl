@@ -1,0 +1,75 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "codec.hs"
+#include "bc5.hs"
+
+Texture2D<float4> g_uncompressedMip0 : register(t1); // MIP0 of the uncompressed source texture
+
+[NUM_THREADS(8, 8, 1)]
+void main(int2 threadID : S_GROUP_THREAD_ID, int2 groupID : S_GROUP_ID)
+{
+    const int2 blockID = (groupID * 8 + threadID);
+    const int2 texelID = blockID * 4;
+    const uint thread = ((threadID.y & 4) << 3) | ((threadID.x & 4) << 2) | ((threadID.y & 3) << 2) | (threadID.x & 3);
+    MinMax minmax = findMinMax(texelID);
+    const uint e0 = encodeEndpointBc5(minmax.max.xy);
+    const uint e1 = encodeEndpointBc5(minmax.min.xy);
+
+    const float2 endpoint0 = decodeEndpointBc5(e0);
+    const float2 endpoint1 = decodeEndpointBc5(e1);
+    const float2 multiply = 7.0 / (endpoint1 - endpoint0);
+    const float2 add = multiply * -endpoint0 + 0.5;
+    uint2 index;
+    uint3 indices = 0;
+    for(int i = 0; i < 6; ++i)
+    {
+	    const float2 texel = g_uncompressedMip0[texelID + uint2(i & 3, i >> 2)].xy;
+        index = (uint2)clamp(texel * multiply + add, 0.0, 7.0);
+        index = (index + ((index + 5) / 6)) & 7;
+        indices.x |= index.x << (i * 3);
+        indices.y |= index.y << (i * 3); 
+    }
+    indices.x = (indices.y << 16) | (indices.x & 0xFFFF);   
+    indices.y = (index.x >> 1);
+    indices.z = (index.y >> 1);
+    for(int i = 6; i < 16; ++i)
+    {
+	    const float2 texel = g_uncompressedMip0[texelID + uint2(i & 3, i >> 2)].xy;
+        index = (uint2)clamp(texel * multiply + add, 0.0, 7.0);                
+        index = (index + ((index + 5) / 6)) & 7;
+        indices.y |= index.x << (2 + (i - 6) * 3);
+        indices.z |= index.y << (2 + (i - 6) * 3);
+    }
+
+    if((e0 & 0xFF) == (e1 & 0xFF))
+    {
+       indices.x &= 0xFFFF0000;
+       indices.y = 0;
+    }
+    if((e0 >> 8) == (e1 >> 8))
+    {
+       indices.x &= 0x0000FFFF;
+       indices.z = 0;
+    }
+
+    temp[thread * 3 + 0] = indices.x;
+    temp[thread * 3 + 1] = indices.y;
+    temp[thread * 3 + 2] = indices.z;
+
+    uint4 staging = 0;
+    if(thread >= 16)
+    {
+        const uint id = (thread - 16) * 4;
+        staging.x = temp[id + 0];
+        staging.y = temp[id + 1];
+        staging.z = temp[id + 2];
+        staging.w = temp[id + 3];
+    }
+    g_compressedMip0[blockID] = staging;
+}
+    
+

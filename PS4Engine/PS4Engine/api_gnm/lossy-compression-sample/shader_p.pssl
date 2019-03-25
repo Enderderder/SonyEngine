@@ -1,0 +1,41 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+Texture2D<float4> g_compressed : register(t0);
+Texture2D<float4> g_recompressed : register(t1);
+
+float4 color(float4 position)
+{
+    uint width, height;
+    g_recompressed.GetDimensions(width, height);
+    int2 texel = int2(position.x, position.y - 1080 + height);
+    if(texel.y >= 0 && texel.y < height)
+    {
+        const int image_x = texel.x / (width + 8);
+        const int image_y = texel.y / height;
+        texel.x %= (int)width + 8;
+        texel.y %= (int)height;
+        if(texel.x < width)
+        {
+            const float4 compressed   = g_compressed[texel]; 
+            const float4 recompressed = g_recompressed[texel]; 
+            switch(image_x)
+            {
+              case 0: return compressed;
+              case 1: return recompressed;
+              case 2: return abs(compressed - recompressed);
+            }
+        }
+    }
+    return float4(0);
+}
+
+float4 main(float4 position : S_POSITION) : S_TARGET_OUTPUT
+{
+    float4 result = color(position);
+    result.a = 1;
+    return result;
+}

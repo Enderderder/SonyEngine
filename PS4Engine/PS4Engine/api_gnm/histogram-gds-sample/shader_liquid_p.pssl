@@ -1,0 +1,63 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+#include "../toolkit/shader_common/illum.hs"
+#include "../toolkit/shader_common/noise.hs"
+
+
+
+SamplerState g_nomipSampler : register( s2 );
+Texture2D tex_marblecols : register( t2 );
+
+
+float4 main( VS_OUTPUT In ) : S_TARGET_OUTPUT
+{
+	float3 unit_normal = normalize(In.vLocNrm.xyz);
+	float3 vL = normalize(g_vLightPos-In.vLocPos);
+	float3 vL2 = normalize(g_vLightPos2-In.vLocPos);
+	float3 vV = normalize(g_vCamPos-In.vLocPos);
+	
+	// adjust scale of surface Point for Perlin Noise
+	const float fS = 2*2*0.25*0.003 * 8*45;
+	const float3 vP = fS*In.vLocPos;		
+	
+	float fPixSize = GetPixelSize(vP);
+
+	float4 height4 = dfractalsum(vP + 5*(float3(-g_fTime,g_fTime/2,g_fTime/3)/25), fPixSize);
+	float height = fractalsum(vP, fPixSize);
+
+	height *= saturate(2*dot(vV, unit_normal));
+
+	const float user_scale = 0.1;
+	height4 *= 0.85*(user_scale);
+	float3 diff_col = tex_marblecols.Sample(g_nomipSampler, height).xyz;
+
+	float3 vN = PerturbNormal2(unit_normal, height4.yzw);
+
+	float3 spec_col;
+	spec_col = (192/255.0) * float3(1,1,1);
+	
+	
+	float Ka = 0.05;
+	float Kd = 0.7;//0.4;
+	float Ks = 0.4;
+	//float Ks = 0.2;
+	float roughness = 16;
+
+
+	float3 vLgtDir[] = {vL, vL2};
+	float3 vLgtCols[] = {1.2*float3(1,1,1), 0.8*float3(1,1,1)};
+	float3 res = 0;
+	for(int k=0; k<2; k++)
+		res += diff_col * Ka + vLgtCols[k]*BRDF2(vN, unit_normal,  vLgtDir[k], vV, diff_col * Kd, spec_col * Ks, roughness);
+		
+	float Ke = 0.5*1.4*1.5*(33/255.0);
+	res = res + Ke;
+
+	return float4(res,1);
+}

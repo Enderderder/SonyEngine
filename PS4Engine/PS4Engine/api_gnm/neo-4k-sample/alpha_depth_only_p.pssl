@@ -1,0 +1,27 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+#pragma argument(gradientadjust=auto)
+
+
+Texture2D texDiffuse	: register(t0);
+SamplerState samLinear	: register(s0);
+
+struct VS_OUTPUT
+{
+    sample float4 pos			: S_POSITION;
+	sample float2 texcoord		: TEXCOORD0;
+};
+
+void main(VS_OUTPUT input) : S_TARGET_OUTPUT
+{
+	float alpha = texDiffuse.Sample( samLinear, input.texcoord).w;
+
+	if(alpha < 0.5)
+		discard;
+}

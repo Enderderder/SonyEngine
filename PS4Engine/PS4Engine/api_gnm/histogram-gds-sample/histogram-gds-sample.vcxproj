@@ -1,0 +1,98 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|ORBIS">
+      <Configuration>Debug</Configuration>
+      <Platform>ORBIS</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ORBIS">
+      <Configuration>Release</Configuration>
+      <Platform>ORBIS</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>histogram-gds-sample</ProjectName>
+    <ProjectGuid>{2FC409DE-A524-4E63-9772-489C5E4E3AEA}</ProjectGuid>
+    <RootNamespace>dkdev</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <GnmProjectType>Sample</GnmProjectType>
+  </PropertyGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+    <Import Project="$(SolutionDir)\SceGnm.props" Condition="Exists('$(SolutionDir)\SceGnm.props')" />
+    <Import Project="$(SCE_ORBIS_SDK_DIR)\host_tools\msbuild\SceGnm.props" Condition="!Exists('$(SolutionDir)\SceGnm.props')" />
+  </ImportGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'" Label="Configuration" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'" Label="Configuration" />
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.40219.1</_ProjectFileVersion>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'" />
+  <ItemGroup>
+    <ClCompile Include="histogram-gds-sample.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="histogram_structs.h" />
+    <ClInclude Include="std_cbuffer.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="vsoutput.hs" />
+    <None Include="wood.hs" />
+    <None Include="wood2.hs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PSSL Include="shader_clay_p.pssl" />
+    <PSSL Include="shader_liquid_p.pssl" />
+    <PSSL Include="shader_marble_p.pssl" />
+    <PSSL Include="shader_triplanar_p.pssl" />
+    <PSSL Include="shader_vv.pssl" />
+    <PSSL Include="shader_wood_p.pssl" />
+  </ItemGroup>
+  <ItemGroup>
+    <PSSL Include="shader_color_p.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <None Include="shader_histogram_c.pssl">
+      <FileType>Document</FileType>
+    </None>
+    <PSSL Include="shader_histogram_gds_c.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <PSSL Include="shader_histogram_gds_lds_c.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <PSSL Include="shader_histogram_gen_vv.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <None Include="shader_histogram_optimized_c.pssl">
+      <FileType>Document</FileType>
+    </None>
+    <PSSL Include="shader_histogram_optimized_gds_c.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <PSSL Include="shader_histogram_optimized_rw_c.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <PSSL Include="shader_histogram_rw_c.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <PSSL Include="shader_histogram_rw_lds_c.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+    <PSSL Include="shader_texture_p.pssl">
+      <FileType>Document</FileType>
+    </PSSL>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(SolutionDir)\SceGnm.targets" Condition="Exists('$(SolutionDir)\SceGnm.targets')" />
+  <Import Project="$(SCE_ORBIS_SDK_DIR)\host_tools\msbuild\SceGnm.targets" Condition="!Exists('$(SolutionDir)\SceGnm.targets')" />
+</Project>

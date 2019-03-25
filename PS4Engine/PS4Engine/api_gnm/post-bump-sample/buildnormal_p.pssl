@@ -1,0 +1,171 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "cpy_output.hs"
+#include "../toolkit/shader_common/noise.hs"
+
+
+
+Texture2D gbuf_tex : register( t2 );
+Texture2D depth_tex : register( t3 );
+
+RW_Texture2D<float3> second_display : register( u1 );
+
+//SamplerState g_linSampler : register( s2 );
+
+void CalcSurfaceDerivatives(out float3 vSigmaS, out float3 vSigmaT, const float3 surf_norm, const float3 vPixCoord);
+
+
+//float4 main( CPY_OUTPUT In, float4 screenSpace : S_POSITION) : S_TARGET_OUTPUT
+float4 main( float4 screenSpace : S_POSITION) : S_TARGET_OUTPUT
+{
+	unsigned int w, h;
+	gbuf_tex.GetDimensions(w, h);
+	
+	const float4 C0 = g_mInvScrProjection[0];
+	const float4 C1 = g_mInvScrProjection[1];
+	const float4 C2 = g_mInvScrProjection[2];
+	const float4 C3 = g_mInvScrProjection[3];
+	
+	const float4 row2 = float4(C0.z, C1.z, C2.z, C3.z);
+	const float4 row3 = float4(C0.w, C1.w, C2.w, C3.w);
+	
+	
+	const int2 cen = int2(screenSpace.x, screenSpace.y);
+	float2 heights_depths[9];
+	float3 surf_norm = 0;
+	float3 scr_pos = float3(screenSpace.x, screenSpace.y, 0.0);			// pick up .z
+	
+	// pick up 3x3 tile of heights and depths plus the initial center normal.
+	float3 vN = 0;
+#ifdef USE_EARLY_OUT
+	bool bFoundNonZeroHeight = false;
+#endif
+	for(int y=0; y<3; y++)
+		for(int x=0; x<3; x++)
+		{
+			const int2 pos_in = int2(x-1+cen.x, y-1+cen.y);
+			float4 val = gbuf_tex.Load(int3(pos_in, 0));
+			float depth = depth_tex.Load(int3(pos_in, 0)).x;
+			
+			const float4 ppos = float4(pos_in.x+0.5, pos_in.y+0.5, depth, 1);
+			
+			heights_depths[y*3+x] = float2(0.3*val.w, dot(row2, ppos)/dot(row3, ppos));
+			if(x==1 && y==1) 
+			{
+				surf_norm = normalize(2*val.xyz-1);
+				scr_pos.z = depth;
+			}
+
+			#ifdef USE_EARLY_OUT
+				bFoundNonZeroHeight = bFoundNonZeroHeight || (val.w>0.0);
+			#endif
+		}
+#ifdef USE_EARLY_OUT
+	if(bFoundNonZeroHeight)
+#endif
+	{
+		// build coherency weights (to determine if neighboring pixels are coherent)
+		float w0_l[3], w0_r[3], q0_b[3], q0_t[3];
+		for(int i=0; i<3; i++)
+		{
+			float diff_r = heights_depths[i*3+2].y - heights_depths[i*3+1].y;
+			float diff_l = heights_depths[i*3+0].y - heights_depths[i*3+1].y;
+			float diff_t = heights_depths[6+i].y - heights_depths[3+i].y;
+			float diff_b = heights_depths[0+i].y - heights_depths[3+i].y;
+
+			const float fS = 0.2;
+			w0_r[i] = exp(-(diff_r*diff_r)*fS);
+			w0_l[i] = exp(-(diff_l*diff_l)*fS);
+			q0_t[i] = exp(-(diff_t*diff_t)*fS);
+			q0_b[i] = exp(-(diff_b*diff_b)*fS);
+		}
+
+		// build three dBs for bottom, center and top and build three dBt for left, center and right.
+		float dBs[3], dBt[3];
+		for(int i=0; i<3; i++)
+		{
+			float Rhgt = lerp(heights_depths[i*3+1].x, heights_depths[i*3+2].x, w0_r[i]);
+			float Lhgt = lerp(heights_depths[i*3+1].x, heights_depths[i*3+0].x, w0_l[i]);
+			float Thgt = lerp(heights_depths[3+i].x, heights_depths[6+i].x, q0_t[i]);
+			float Bhgt = lerp(heights_depths[3+i].x, heights_depths[0+i].x, q0_b[i]);
+			dBs[i] = 0.5*(Rhgt - Lhgt);
+			dBt[i] = 0.5*(Thgt - Bhgt);
+		}
+
+	#if 1
+		// sobel, this step is not mandatory but looks nice
+		float3 sobVert = float3(q0_b[1], 2, q0_t[1]);
+		sobVert /= (sobVert.x+sobVert.y+sobVert.z);
+		
+		float3 sobHrz = float3(w0_l[1], 2, w0_r[1]);
+		sobHrz /= (sobHrz.x+sobHrz.y+sobHrz.z);
+
+		const float dBs0 = dot(sobVert, float3(dBs[0], dBs[1], dBs[2]) );
+		const float dBt0 = dot(sobHrz, float3(dBt[0], dBt[1], dBt[2]) );
+	#else
+		// without sobel several of the calculations above are removed by the compiler
+		const float dBs0 = dBs[1];
+		const float dBt0 = dBt[1];
+	#endif
+		float3 vSigmaS, vSigmaT;
+		CalcSurfaceDerivatives(vSigmaS, vSigmaT, surf_norm, scr_pos);
+	
+		// perturb
+		vN = PerturbNormalArbDomain(vSigmaS, vSigmaT, surf_norm, dBs0, dBt0);
+		float3 tN = 0.5*vN+float3(0.5,0.5,0.5);
+	
+	
+		return float4(tN, 1);
+	}
+#ifdef USE_EARLY_OUT
+	else
+	{
+		return float4(0.5,0.5,0.5, 1);
+	}
+#endif
+
+	return float4(0.5*vN + 0.5, 1);
+}
+
+
+#define FLT_EPSILON     1.0e-05F        // small but non-zero cutoff value
+
+void CalcSurfaceDerivatives(out float3 vSigmaS, out float3 vSigmaT, const float3 surf_norm, const float3 vPixCoord)
+{
+	float4 pos_h = mul( float4(vPixCoord,1), g_mInvScrProjection );
+	float3 pos = (1/pos_h.w) * pos_h.xyz;
+	
+	
+	float4 tplane = float4(surf_norm, -dot(surf_norm, pos));
+	float4 scrsp_tplane = mul(g_mInvScrProjection, tplane);		// transform by inverse transposed to get to destination
+
+	
+	// determine intersection against plane in screen space
+	// z = - (A/C)x - (B/C)y - (D/C) 
+	//float4(s, t, - (A/C)s - (B/C)t - (D/C), 1);
+	
+	// determine derivative of this function in view space relative to screen pixels
+	const float Nz = (scrsp_tplane.z<0?(-1):1) * max(abs(scrsp_tplane.z), FLT_EPSILON);
+	const float k0 = -scrsp_tplane.x / Nz;
+	const float k1 = -scrsp_tplane.y / Nz;
+	const float k2 = -scrsp_tplane.w / Nz;
+	
+	const float4 C0 = g_mInvScrProjection[0];
+	const float4 C1 = g_mInvScrProjection[1];
+	const float4 C2 = g_mInvScrProjection[2];
+	const float4 C3 = g_mInvScrProjection[3];
+	
+	const float4 v0 = C0+k0*C2;
+	const float4 v1 = C1+k1*C2;
+	const float4 v2 = C3+k2*C2;
+	
+	// homogeneous intersection in view space: vX(s,t) = s*v0 + t*v1 + v2
+	const Vector4Unaligned vX = v0*vPixCoord.x + v1*vPixCoord.y + v2;
+	vSigmaS = (v0.xyz * vX.w - vX.xyz * v0.w) / (vX.w*vX.w);
+	vSigmaT = (v1.xyz * vX.w - vX.xyz * v1.w) / (vX.w*vX.w);
+}

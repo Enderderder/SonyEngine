@@ -1,0 +1,107 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2011 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+/* Optimized version of "Approximate Catmull-Clark" for irregular patches.
+ * This DOMAIN_PATCH_TYPE shader assumes all 32 tangent vectors were already computed in the Hull Shader
+ * Thus the DOMAIN_PATCH_TYPE shader is shorter but the LDS footprint of the patch threadgroup is greater.
+ */
+
+#define ACC_PATCHES
+#define HS_GENERATED_TANGENTS
+
+#include "../../../toolkit/shader_common/shader_base.h"
+#include "../std_cbuffer.h"
+#include "../sh_outputs.hs"
+
+
+float3 bezier_eval( const float3 bezpatch[16], float4 polyU, float4 polyV )
+{
+    float3 res = 0;
+
+    res  = polyV.x * ( bezpatch[0] * polyU.x + bezpatch[1] * polyU.y + bezpatch[2] * polyU.z + bezpatch[3] * polyU.w );
+    res += polyV.y * ( bezpatch[4] * polyU.x + bezpatch[5] * polyU.y + bezpatch[6] * polyU.z + bezpatch[7] * polyU.w );
+    res += polyV.z * ( bezpatch[8] * polyU.x + bezpatch[9] * polyU.y + bezpatch[10] * polyU.z + bezpatch[11] * polyU.w );
+    res += polyV.w * ( bezpatch[12] * polyU.x + bezpatch[13] * polyU.y + bezpatch[14] * polyU.z + bezpatch[15] * polyU.w );
+    
+    return res;
+}
+
+
+// This is a subset of the Bernstein Polynomials. These are used for evaluation of a bezier patch surface.
+float4 bern_polynomials(float t)
+{
+    return float4( (1-t)*(1-t)*(1-t), 3.0f*t*(1-t)*(1-t), 3.0f*t*t*(1-t), t*t*t );
+}
+
+// the derivative of each polynomial
+float4 bern_polynomials_deriv(float t)
+{
+    return float4( -3*(1-t)*(1-t), 3*(1-t)*(1-t) - 6*t*(1-t), 6*t*(1-t) - 3*t*t, 3*t*t );
+}
+
+[DOMAIN_PATCH_TYPE("quad")]
+VS_OUTPUT main( HS_CNST_OUTPUT input, float2 domainCoordinates : S_DOMAIN_LOCATION, const OutputPatch<HS_OUTPUT, 4> bezier_patch )
+{
+    VS_OUTPUT output = (VS_OUTPUT)0;
+
+	float2 uv = domainCoordinates;
+	
+	// synthesize surface position
+	float4 polyU = bern_polynomials( uv.x );
+	float4 polyV = bern_polynomials( uv.y );
+
+	
+	
+	const float3 inner0 = float3(bezier_patch[0].corner.w, bezier_patch[0].edge_l.w, bezier_patch[0].edge_r.w);
+	const float3 inner1 = float3(bezier_patch[1].corner.w, bezier_patch[1].edge_l.w, bezier_patch[1].edge_r.w);
+	const float3 inner2 = float3(bezier_patch[2].corner.w, bezier_patch[2].edge_l.w, bezier_patch[2].edge_r.w);
+	const float3 inner3 = float3(bezier_patch[3].corner.w, bezier_patch[3].edge_l.w, bezier_patch[3].edge_r.w);
+	float3 positions[] = { bezier_patch[0].corner.xyz, bezier_patch[0].edge_l.xyz, bezier_patch[0].edge_r.xyz, bezier_patch[1].corner.xyz,
+						   bezier_patch[3].edge_r.xyz, inner0, inner1, bezier_patch[1].edge_l.xyz, 
+						   bezier_patch[3].edge_l.xyz, inner3, inner2, bezier_patch[1].edge_r.xyz, 
+						   bezier_patch[3].corner.xyz, bezier_patch[2].edge_r.xyz, bezier_patch[2].edge_l.xyz, bezier_patch[2].corner.xyz};
+
+	float3 surf_pos = bezier_eval( positions, polyU, polyV );
+
+#if 1	// change this to 0 to disable ACC tangent patches (results in some lighting discontinuities but is faster)					   
+	float3 tanU[16]={bezier_patch[0].tanu.xyz, input.quad_tangents[0].Tan0.xyz, input.quad_tangents[0].Tan1.xyz, bezier_patch[1].tanu.xyz, 
+					input.quad_tangents[0].Tan2.xyz, input.quad_tangents[0].Tan3.xyz, input.quad_tangents[0].Tan4.xyz, float3(input.quad_tangents[0].Tan0.w, input.quad_tangents[0].Tan1.w, input.quad_tangents[0].Tan2.w), 
+					float3(input.quad_tangents[2].Tan0.w, input.quad_tangents[2].Tan1.w, input.quad_tangents[2].Tan2.w), input.quad_tangents[2].Tan4.xyz, input.quad_tangents[2].Tan3.xyz, input.quad_tangents[2].Tan2.xyz, 
+					bezier_patch[3].tanu.xyz, input.quad_tangents[2].Tan1.xyz, input.quad_tangents[2].Tan0.xyz, bezier_patch[2].tanu.xyz };
+	float3 tanV[16]={bezier_patch[0].tanv.xyz, float3(input.quad_tangents[3].Tan0.w, input.quad_tangents[3].Tan1.w, input.quad_tangents[3].Tan2.w), input.quad_tangents[1].Tan2.xyz, bezier_patch[1].tanv.xyz, 
+					input.quad_tangents[3].Tan1.xyz, input.quad_tangents[3].Tan4.xyz, input.quad_tangents[1].Tan3.xyz, input.quad_tangents[1].Tan0.xyz, 
+					input.quad_tangents[3].Tan0.xyz, input.quad_tangents[3].Tan3.xyz, input.quad_tangents[1].Tan4.xyz, input.quad_tangents[1].Tan1.xyz, 
+					bezier_patch[3].tanv.xyz, input.quad_tangents[3].Tan2.xyz, float3(input.quad_tangents[1].Tan0.w, input.quad_tangents[1].Tan1.w, input.quad_tangents[1].Tan2.w), bezier_patch[2].tanv.xyz };
+
+    float3 sigmaU = bezier_eval( tanU, polyU, polyV );
+    float3 sigmaV = bezier_eval( tanV, polyU, polyV );
+#else	
+	// synthesize first order derivatives
+	float4 deriv_polyU = bern_polynomials_deriv( uv.x );
+	float4 deriv_polyV = bern_polynomials_deriv( uv.y );
+	float3 sigmaU = bezier_eval( positions, deriv_polyU, polyV );
+	float3 sigmaV = bezier_eval( positions, polyU, deriv_polyV );
+#endif
+
+	// build and normalize the surface normal
+	float3 norm = normalize( cross(sigmaU, sigmaV) );
+
+
+	output.vPosition = mul( float4(surf_pos,1), g_mLocToProj );
+	output.pos.xyz = mul( float4(surf_pos,1), g_mLocToView).xyz;
+	output.norm.xyz = mul( float4(norm,0), g_mLocToView).xyz;
+
+	const float2 texC0 = float2(bezier_patch[0].tanu.w, bezier_patch[0].tanv.w);
+	const float2 texC1 = float2(bezier_patch[1].tanu.w, bezier_patch[1].tanv.w);
+	const float2 texC2 = float2(bezier_patch[2].tanu.w, bezier_patch[2].tanv.w);
+	const float2 texC3 = float2(bezier_patch[3].tanu.w, bezier_patch[3].tanv.w);
+
+	const float2 texST = texC0*(1-uv.x)*(1-uv.y) + texC1*uv.x*(1-uv.y) + texC2*uv.x*uv.y + texC3*(1-uv.x)*uv.y;
+	output.pos.w = texST.x;
+	output.norm.w = texST.y;
+    
+	return output;
+}

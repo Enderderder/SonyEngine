@@ -1,0 +1,26 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "htile.hs"
+
+RW_DataBuffer<uint> Output : register(u0);
+
+ConstantBuffer constantBuffer : register(c1)
+{
+	uint4 m_htileRegion;
+	uint4 m_htileValue;
+}
+
+[NUM_THREADS(8, 8, 1)]
+void main(uint2 tile : S_DISPATCH_THREAD_ID)
+{
+	if(tile.x >= m_htileRegion.z || tile.y >= m_htileRegion.w)
+		return;
+    tile.x += m_htileRegion.x;
+    tile.y += m_htileRegion.y;
+	uint htileOffset = HtileOffsetInDwords(tile.x, m_htileRegion.z, tile.y, false, m_htileValue.y);
+	Output[htileOffset] = m_htileValue.x;
+}

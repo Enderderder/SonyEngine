@@ -1,0 +1,78 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+RW_Texture2D<float4> g_texture : register(u0);
+
+ConstantBuffer buffer : register(c0)
+{
+	Matrix4Unaligned m_inverseProjection;
+	Matrix4Unaligned m_worldToView;
+	Matrix4Unaligned m_viewToLocal;
+	Vector4Unaligned m_clearColor;
+	Vector4Unaligned m_lightPosition;
+	Vector4Unaligned m_lightColor;
+	Vector4Unaligned m_ambientColor;
+	Vector4Unaligned m_nearFar;	
+}
+
+float4 ScreenToView(float4 screen)
+{
+  float4 result = mul(screen, m_inverseProjection);
+  result.xyz /= result.w;
+  return result;
+}
+
+[NUM_THREADS(8,8,1)]
+void main( uint2 groupID : S_GROUP_ID, uint2 threadID : S_GROUP_THREAD_ID )
+{
+	uint2 pixels;
+	g_texture.GetDimensions( pixels.x, pixels.y );
+	const uint2 pixelID = groupID * 8 + threadID;
+
+	const float3 rayOrigin = ScreenToView(float4(pixelID.x,pixelID.y,0,1)).xyz;
+	const float3 rayTerminus = ScreenToView(float4(pixelID.x,pixelID.y,1,1)).xyz;
+
+	const float3 lightPosition = mul(float4(m_lightPosition.xyz,1), m_worldToView).xyz;
+	const float3 eyePosition = float3(0,0,0);
+
+	const float3 rayDirection = normalize(rayTerminus - rayOrigin);
+
+	const float3 spherePosition = mul(float4(0, 0, 0, 1), m_worldToView).xyz;
+	const float sphereRadius = 1;
+
+	const float a = dot(rayDirection, rayDirection);
+	const float b = 2 * dot(rayDirection, rayOrigin-spherePosition);
+	const float c = dot(rayOrigin-spherePosition, rayOrigin-spherePosition) - sphereRadius * sphereRadius;
+
+	float4 light = m_clearColor;
+
+	const float term = b*b-4*a*c;
+	if( term >= 0 )
+	{
+		const float t0 = (-b + sqrt(term)) / (2 * a);
+		const float t1 = (-b - sqrt(term)) / (2 * a);
+		const float t = min(t0, t1);
+		const float3 intersection = t * rayDirection + rayOrigin;
+		if(intersection.z <= -m_nearFar.x && intersection.z >= -m_nearFar.y)
+		{
+			const float3 E = normalize(eyePosition - intersection);
+			const float3 L = normalize(lightPosition - intersection);
+			const float3 N = normalize(intersection - spherePosition);
+			const float3 H = normalize(E + L);
+			const float3 diffuseLight = m_lightColor.xyz * saturate(dot(N, L)) + m_ambientColor.xyz;
+			const float3 specularLight = m_lightColor.xyz * pow(saturate(dot(N, H)), 40);
+			const float3 position = mul(float4(intersection, 1), m_viewToLocal).xyz;
+			const float3 adjusted = floor(position * 10);
+			const float albedo = (int(adjusted.x)^int(adjusted.y)/*^int(adjusted.z)*/)&1;
+			light.rgb = albedo * diffuseLight + specularLight;
+			light.a = 1;
+		}
+	}
+
+	g_texture[pixelID] = pow(light, 0.45);
+}

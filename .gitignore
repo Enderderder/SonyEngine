@@ -13,7 +13,7 @@
 *.userprefs
 
 # Build results
-[Dd]ebug/
+ORBIS_Debug/
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/

@@ -1,0 +1,47 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+ConstantBuffer constants : register(c0)
+{
+	int m_cursorX;
+	int m_cursorY;
+	int m_characters;
+	int m_screenWidthInCharacters;
+	int m_windowX;
+	int m_windowY;
+	int m_windowWidth;
+	int m_windowHeight;
+}
+
+DataBuffer<uint> g_unsigned : register(t0);
+RW_DataBuffer<uint> g_screen : register(u0);
+
+[NUM_THREADS(64,1,1)]
+void main( uint offset : S_DISPATCH_THREAD_ID )
+{
+    if(offset >= m_characters)
+		return;
+	const int cursorX = m_cursorX + offset;
+	const int cursorY = m_cursorY;
+	if(cursorX < 0 || cursorX >= m_windowWidth || cursorY < 0 || cursorY >= m_windowHeight)
+		return;
+	const uint cell_index = ((m_windowY + cursorY) * m_screenWidthInCharacters) + (m_windowX + cursorX);
+	uint cell = g_screen[cell_index];
+	cell &= 0xFFFF0000;
+	const uint place = (m_characters - 1) - offset;
+	const uint tens = pow(10, place);
+	if(tens > 1 && tens > g_unsigned[0])
+	{
+		cell |= ' ';
+	}
+	else
+	{
+		uint divided = g_unsigned[0] / tens;
+		uint digit = divided % 10;
+		cell |= 48 + digit;
+	}
+	g_screen[cell_index] = cell;
+}

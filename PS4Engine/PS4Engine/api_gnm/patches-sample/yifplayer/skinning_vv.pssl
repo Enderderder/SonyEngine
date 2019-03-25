@@ -1,0 +1,60 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "sh_outputs.hs"
+
+
+struct VS_INPUT
+{
+    float3 Position     : POSITION;
+    float4 vWeights0    : TEXCOORD0;
+    float4 vWeights1    : TEXCOORD1;
+    uint4 bone_mats0    : TEXCOORD2;
+    uint4 bone_mats1    : TEXCOORD3;
+	float3 Normal       : TEXCOORD4;
+    float4 Tangent		: TEXCOORD5;
+    float2 TextureUV    : TEXCOORD6;
+};
+
+
+
+VS_OUTPUT main( VS_INPUT In )
+{
+	VS_OUTPUT Out;
+    
+    float3 vP = In.Position;
+    float3 vN = In.Normal;
+    
+    // do skinning here
+	float fWeights[7] = {In.vWeights0.x, In.vWeights0.y, In.vWeights0.z, In.vWeights1.x, In.vWeights1.y, In.vWeights1.z, 0};
+	uint indices[7] = {In.bone_mats0.x, In.bone_mats0.y, In.bone_mats0.z, In.bone_mats1.x, In.bone_mats1.y, In.bone_mats1.z, 0};
+	int i = 0;
+	float3 vPacc = float3(0,0,0);
+	float3 vNacc = float3(0,0,0);
+	
+	//while(i<6 && fWeights[i]>0)
+	//while(fWeights[i]>0)
+	while(i<6)
+	{
+		vPacc += fWeights[i]*mul( float4(vP,1), g_mBones[indices[i]] ).xyz;
+		vNacc += fWeights[i]*mul( float4(vN,0), g_mBones[indices[i]] ).xyz;
+		++i;
+	}
+	
+	vP = vPacc*g_fScale;
+	vP.x += g_fOffs;
+	vN = normalize(vNacc);
+
+	Out.vPosition = mul(float4(vP,1), g_mLocToProj);
+	Out.pos.xyz = mul(float4(vP,1), g_mLocToView).xyz;
+	Out.norm.xyz = mul(float4(vN,0), g_mLocToView).xyz;
+	Out.pos.w = In.TextureUV.x;
+	Out.norm.w = In.TextureUV.y;
+
+
+    return Out;
+}

@@ -1,0 +1,79 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+//--------------------------------------------------------------------------------------
+MS_Texture2D<float4> resolveMsaa : register( t0 );
+Texture2D<unsigned int> fmaskTex : register(t1);
+SamplerState g_samLinear : register( s0 );
+//--------------------------------------------------------------------------------------
+unistruct constb
+{
+	float4 m_clearColor;
+	unsigned int m_width;
+	unsigned int m_height;
+	unsigned int  m_fmaskShift;
+}
+//--------------------------------------------------------------------------------------
+struct VS_OUTPUT
+{
+    float4 Pos : S_POSITION;
+    float2 TexCoord : TEXCOORD0;
+};
+
+//--------------------------------------------------------------------------------------
+// Pixel Shader
+//--------------------------------------------------------------------------------------
+float4 main( VS_OUTPUT input ) : S_TARGET_OUTPUT
+{
+	{
+		int fmask = fmaskTex.Load(int3(input.TexCoord.x*m_width, input.TexCoord.y*m_height, 0));
+		int sample0 = (fmask >> 0*m_fmaskShift) & ((1 << m_fmaskShift)-1);
+		float4 color0 = resolveMsaa.Load(int2(input.TexCoord.x*m_width, input.TexCoord.y*m_height), sample0);
+		int sample1 = (fmask >> 1*m_fmaskShift) & ((1 << m_fmaskShift)-1);
+		float4 color1 = resolveMsaa.Load(int2(input.TexCoord.x*m_width, input.TexCoord.y*m_height), sample1);
+		int sample2 = (fmask >> 2*m_fmaskShift) & ((1 << m_fmaskShift)-1);
+		float4 color2 = resolveMsaa.Load(int2(input.TexCoord.x*m_width, input.TexCoord.y*m_height), sample2);
+		int sample3 = (fmask >> 3*m_fmaskShift) & ((1 << m_fmaskShift)-1);
+		float4 color3 = resolveMsaa.Load(int2(input.TexCoord.x*m_width, input.TexCoord.y*m_height), sample3);
+		
+		//if (sample0 == 1 || sample1 == 1 || sample2 == 1 || sample3 == 1)
+		//	return float4(1,0,0,1);
+	
+		// Visualize EQAA (4x AA with 2 fragments)
+		//if (sample0 == 2 || sample1 == 2 || sample2 == 2 || sample3 == 2)
+		//	return float4(1,0,0,1);
+		//if (sample0 == 3 || sample1 == 3 || sample2 == 3 || sample3 == 3)
+		//	return float4(0,1,0,1);
+		//return (color0 + color1 + color2 + color3) / 4;
+		
+		int nNumColors = 0;
+		float4 finalColor = float4(0,0,0,0);
+		if (sample0 != 2)
+		{
+			nNumColors++;
+			finalColor += color0;
+		}
+		if (sample1 != 2)
+		{
+			nNumColors++;
+			finalColor += color1;
+		}
+		if (sample2 != 2)
+		{
+			nNumColors++;
+			finalColor += color2;
+		}
+		if (sample3 != 2)
+		{
+			nNumColors++;
+			finalColor += color3;
+		}
+		return finalColor / nNumColors;
+	}
+}
+

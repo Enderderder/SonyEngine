@@ -1,0 +1,10 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+struct UserData {
+	FetchShaderPointer               fs;	 // fetch shader in s[0:1]
+	ResourcePointer<VertexBuffer>    vb;	 // vb in s[2:3]
+	ResourceConstantBuffer<float> Constants;	 // srv0 in s[8:11] 
+};

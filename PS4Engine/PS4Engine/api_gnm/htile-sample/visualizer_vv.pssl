@@ -1,0 +1,24 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+struct VSCLEAR_OUT
+{
+	float4 m_position : S_POSITION;
+};
+
+ConstantBuffer Constants : register(c0)
+{
+	float4 g_position[4];
+};
+
+VSCLEAR_OUT main( uint id : S_VERTEX_ID ) 
+{
+	VSCLEAR_OUT output = (VSCLEAR_OUT)0;
+	output.m_position.xy = g_position[id].xy * 2 - 1;
+	output.m_position.z = 0;
+	output.m_position.w = 1;
+	return output;
+}

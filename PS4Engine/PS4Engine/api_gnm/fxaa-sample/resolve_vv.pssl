@@ -1,0 +1,21 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+struct VS_Output
+{
+    float4 Pos : S_POSITION;
+    float2 Tex : TEXCOORD0;
+};
+ 
+VS_Output main(uint id : S_VERTEX_ID)
+{
+    VS_Output Output;
+    Output.Tex = float2(id & 2, (id << 1) & 2);
+    Output.Pos = float4(Output.Tex * float2(2,-2) + float2(-1,1), 0, 1);
+    return Output;
+}

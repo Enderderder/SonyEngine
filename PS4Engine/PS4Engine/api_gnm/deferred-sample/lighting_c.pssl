@@ -1,0 +1,279 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+#include "deferred_common.hs"
+
+#define PIXELS_PER_TILE_WIDE 8
+#define PIXELS_PER_TILE_TALL 8
+#define THREADS_PER_WAVEFRONT 64
+#define BITS_PER_WORD 32
+#define MAXIMUM_LIGHTS 1024
+
+ConstantBuffer lighting_cb
+{
+	Matrix4Unaligned m_inverseProjection;
+	uint4 m_lights;
+	uint4 m_htile;
+};
+
+Texture2D g_depthTexture                       : register(t0); // depth as rendered in the depth/normal pass
+Texture2D g_viewNormalSpecularPowerTexture     : register(t1); // view space normal, as rendered in the depth/normal pass
+RegularBuffer<float4> g_lightPosition          : register(t2);
+RegularBuffer<float2> g_lightAttenuation       : register(t3);
+RegularBuffer<uint> g_lightColor               : register(t4);
+DataBuffer<uint> HtileBuffer                   : register(t5);
+
+RW_Texture2D<float4> g_diffuseLightTextureOut  : register(u0); // accumulation of linear diffuse contributions from all lights
+RW_Texture2D<float4> g_specularLightTextureOut : register(u1); // accumulation of linear specular contributions from all lights
+
+float4 ScreenToView( float4 screen )
+{
+  float4 result = mul( screen, m_inverseProjection );
+  result.xyz /= result.w;
+  return result;
+}
+
+float4 MakePlaneFromCorners( float3 a, float3 b, float3 c )
+{
+	float4 result;
+	result.xyz = normalize( cross( b-a, c-a ) );
+	result.w = -dot( result.xyz, a );
+	return result;
+}
+
+struct Frustum
+{
+	float4 m_plane[6];
+};
+
+#define TEST_PLANE( PLANE ) \
+		dist = dot( float4(sphere.x,sphere.y,sphere.z,1), frustum.m_plane[PLANE] ); \
+		if( dist < -sphere.w ) \
+			return false;
+
+bool IntersectsFrustum( const Frustum frustum, const float4 sphere )
+{
+	float dist;
+	TEST_PLANE( 0 );
+	TEST_PLANE( 1 );
+	TEST_PLANE( 2 );
+	TEST_PLANE( 3 );
+	TEST_PLANE( 4 );
+	TEST_PLANE( 5 );
+	return true;
+}
+
+#define LIGHT_WORDS (MAXIMUM_LIGHTS/BITS_PER_WORD)
+thread_group_memory uint gs_lightPassedBroadPhaseCulling[LIGHT_WORDS];
+thread_group_memory uint gs_lightPassedNarrowPhaseCulling[LIGHT_WORDS];
+thread_group_memory float3 frustumCorner[8];
+thread_group_memory Frustum frustum = (Frustum)0; // Workaround: potential LDS initialization timing problem
+thread_group_memory uint anythingPassedCulling;
+thread_group_memory uint minMaxDepthOfMacrotile[2];
+thread_group_memory uint htile[64];
+
+#define HTILE_Z_ONE 0x3FFF
+
+uint MinZOfHtile( uint threadInWavefront )
+{
+	return ( htile[threadInWavefront] >> 4 ) & HTILE_Z_ONE;
+}
+
+uint MaxZOfHtile( uint threadInWavefront )
+{
+	return ( htile[threadInWavefront] >> 18 ) & HTILE_Z_ONE;
+}
+
+void ClearOneTile( uint tileIndex, uint2 groupID, uint2 threadID, uint /*threadInWavefront*/)
+{
+	float4 diffuse = 0;
+	float4 specular = 0;
+
+	const uint2 tileID = uint2( tileIndex%8, tileIndex/8 );
+	const uint2 tile = groupID*8 + tileID;
+	const uint2 pixel = tile*8 + threadID;
+
+	g_diffuseLightTextureOut[pixel] = diffuse;
+	g_specularLightTextureOut[pixel] = specular;
+}
+
+void LightOneTile( uint tileIndex, uint2 groupID, uint2 threadID, uint threadInWavefront )
+{
+	const float maxDepthInTile = ScreenToView( float4( 0, 0, MinZOfHtile(tileIndex)/(float)HTILE_Z_ONE, 1 ) ).z;
+	const float minDepthInTile = ScreenToView( float4( 0, 0, MaxZOfHtile(tileIndex)/(float)HTILE_Z_ONE, 1 ) ).z;
+
+	if( threadInWavefront < LIGHT_WORDS )
+		gs_lightPassedNarrowPhaseCulling[threadInWavefront] = 0;
+	[loop] for( uint light=threadInWavefront; light<m_lights.x; light+=THREADS_PER_WAVEFRONT )
+	{	
+		const uint lightWord =     light/BITS_PER_WORD;
+		const uint lightMask = 1<<(light%BITS_PER_WORD);
+		if( gs_lightPassedBroadPhaseCulling[lightWord] & lightMask )
+		{
+			const float4 sphere = g_lightPosition[light];
+			if( ( (sphere.z-sphere.w) <= maxDepthInTile ) && ( (sphere.z+sphere.w) >= minDepthInTile ) )
+				AtomicOr( gs_lightPassedNarrowPhaseCulling[lightWord], lightMask );
+		}
+	}	
+
+	if( threadInWavefront == 0 )
+		anythingPassedCulling = 0;
+	if( threadInWavefront<LIGHT_WORDS )
+		AtomicOr( anythingPassedCulling, gs_lightPassedNarrowPhaseCulling[threadInWavefront] );
+
+	float4 diffuse = 0;
+	float4 specular = 0;
+
+	const uint2 tileID = uint2( tileIndex%8, tileIndex/8 );
+	const uint2 tile = groupID*8 + tileID;
+	const uint2 pixel = tile*8 + threadID;
+
+	if( anythingPassedCulling != 0 )
+	{
+		const float4 position = ScreenToView( float4( pixel.x, pixel.y, g_depthTexture[pixel].x, 1 ) );		
+		const float4 viewNormalSpecularPower = g_viewNormalSpecularPowerTexture[pixel];
+
+		[loop] for( uint word=0; word<(m_lights.x+BITS_PER_WORD-1)/BITS_PER_WORD; ++word )
+		{
+			uint bits = gs_lightPassedNarrowPhaseCulling[word];
+			[loop] for( uint bit=FirstSetBit_Lo(bits); bit<32; bit=FirstSetBit_Lo(bits) )
+			{
+				bits &= ~(1<<bit);
+					
+				const uint light = word * BITS_PER_WORD + bit;
+
+				const float3 toLight = g_lightPosition[light].xyz - position.xyz;
+				const float distanceToLight = length( toLight );
+				if( distanceToLight <= g_lightPosition[light].w )
+				{
+					const float attenuation = saturate( distanceToLight * g_lightAttenuation[light].x + g_lightAttenuation[light].y );
+					const float3 L = normalize( toLight );
+					const float3 N = viewNormalSpecularPower.xyz;
+					const float NdotL = dot( N, L );
+					if( NdotL > 0 )
+					{
+						const uint lightColor = g_lightColor[light];
+						const float3 color = float3( (lightColor>>0)&0xff, (lightColor>>8)&0xff, (lightColor>>16)&0xff ) / 255 * attenuation;
+						diffuse.xyz += color.xyz * NdotL;
+						const float3 toEye = -position.xyz;
+						const float3 E = normalize( toEye );
+						const float3 H = normalize( E + L );
+						const float NdotH = dot( N, H );			
+						const float specularity = pow( saturate( NdotH ), 20 );
+						specular.xyz += color.xyz * specularity * attenuation; 
+					}
+				}
+			}
+		}
+	}
+
+	g_diffuseLightTextureOut[pixel] = diffuse;
+	g_specularLightTextureOut[pixel] = specular;
+}
+
+uint getbits( uint bits, uint shift, uint a )
+{
+	return ((bits>>a)&1)<<shift;
+}
+
+uint notbits( uint bits, uint shift, uint a )
+{
+	return (((bits>>a)&1)^1)<<shift;
+}
+
+uint xorbits( uint bits, uint shift, uint a, uint b )
+{
+	return (((bits>>a)^(bits>>b))&1)<<shift;
+}
+
+uint xorbit3( uint bits, uint shift, uint a, uint b, uint c )
+{
+	return (((bits>>a)^(bits>>b)^(bits>>c))&1)<<shift;
+}
+
+uint getbit( uint word, uint bit )
+{	return (word>>bit)&1;
+}
+
+uint TilesWide()
+{
+	uint2 dimensions;
+	g_diffuseLightTextureOut.GetDimensions( dimensions.x, dimensions.y );
+	return (dimensions.x+7)/8;
+}
+
+#define unsigned uint
+#include "../htile-sample/metadata.h"
+
+[NUM_THREADS(PIXELS_PER_TILE_WIDE,PIXELS_PER_TILE_TALL,1)]
+void main( uint2 groupID : S_GROUP_ID, uint2 threadID : S_GROUP_THREAD_ID, uint threadInWavefront : S_GROUP_INDEX )
+{
+	// read one htile per each of 64 threads in parallel, and generate a summary of all htiles.
+
+	const uint2 tileID = groupID*8+threadID;
+	const uint htileOffsetTiled = HtileOffsetInDwords(tileID.x, TilesWide(), tileID.y, false, m_htile.x == 1);
+	htile[threadInWavefront] = HtileBuffer[htileOffsetTiled];
+	if( threadInWavefront == 0 )
+	{
+		minMaxDepthOfMacrotile[0] = MinZOfHtile(threadInWavefront);
+		minMaxDepthOfMacrotile[1] = MaxZOfHtile(threadInWavefront);
+	}
+	AtomicMin( minMaxDepthOfMacrotile[0], MinZOfHtile(threadInWavefront) );
+	AtomicMax( minMaxDepthOfMacrotile[1], MaxZOfHtile(threadInWavefront) );
+
+	// first, do broadphase culling of all the lights to this 64x64 pixel macrotile, and output a bitfield to LDS
+
+	if( threadInWavefront < 8 )
+	{
+		const uint a = (threadInWavefront>>0)&1;
+		const uint b = (threadInWavefront>>1)&1;
+		const uint c = (threadInWavefront>>2)&1;
+		const uint x = (groupID.x+(a^b))*64; 
+		const uint y = (groupID.y+   b )*64; 
+		const float z = minMaxDepthOfMacrotile[c]/(float)HTILE_Z_ONE;
+		frustumCorner[threadInWavefront] = ScreenToView( float4( x, y, z, 1 ) ).xyz;
+	}
+	if( threadInWavefront < 4 )
+	{	
+		frustum.m_plane[threadInWavefront] = MakePlaneFromCorners( frustumCorner[threadInWavefront], frustumCorner[threadInWavefront+4], frustumCorner[(threadInWavefront+1)%4] );
+	}
+	if( threadInWavefront == 0 )
+	{
+		frustum.m_plane[4] = MakePlaneFromCorners( frustumCorner[0], frustumCorner[1], frustumCorner[2] );
+		frustum.m_plane[5] = MakePlaneFromCorners( frustumCorner[6], frustumCorner[5], frustumCorner[4] );
+	}
+
+	if( threadInWavefront < LIGHT_WORDS )
+		gs_lightPassedBroadPhaseCulling[threadInWavefront] = 0;
+	[loop] for( uint light=threadInWavefront; light<m_lights.x; light+=THREADS_PER_WAVEFRONT )
+	{		
+		const float4 sphere = g_lightPosition[light];
+		if( IntersectsFrustum( frustum, sphere ) )
+			AtomicOr( gs_lightPassedBroadPhaseCulling[light/BITS_PER_WORD], 1<<(light%BITS_PER_WORD) );
+	}	
+
+	if( threadInWavefront == 0 )
+		anythingPassedCulling = 0;
+	if( threadInWavefront<LIGHT_WORDS )
+		AtomicOr( anythingPassedCulling, gs_lightPassedBroadPhaseCulling[threadInWavefront] );
+	if( anythingPassedCulling == 0 )
+	{
+		[loop] for( uint tileIndex=0; tileIndex<64; ++tileIndex )
+		{
+			ClearOneTile( tileIndex, groupID, threadID, threadInWavefront );
+		}
+	}
+	else
+	{
+		// then, for each 8x8 tile of this 64x64 macrotile, for each light that passed the broadphase test, do lighting.
+		[loop] for( uint tileIndex=0; tileIndex<64; ++tileIndex )
+		{
+			LightOneTile( tileIndex, groupID, threadID, threadInWavefront );
+		}
+	}
+}
+

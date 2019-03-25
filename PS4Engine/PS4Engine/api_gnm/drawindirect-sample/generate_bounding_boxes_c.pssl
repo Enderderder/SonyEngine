@@ -1,0 +1,49 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "cull_cb.h"
+
+DataBuffer<uint> g_index : register(t0);
+DataBuffer<float3> g_position : register(t1);
+
+RW_DataBuffer<float3> g_boundingBoxMin : register(u0);
+RW_DataBuffer<float3> g_boundingBoxMax : register(u1);
+
+thread_group_memory float3 g_mini[64];
+thread_group_memory float3 g_maxi[64];
+
+// each wave does 4 vertex sets of 16 triangles each
+
+[NUM_THREADS(64, 1, 1)]
+void main(uint threadID : S_GROUP_THREAD_ID, uint3 groupID : S_GROUP_ID)
+{
+	const uint wave = groupID.x;
+	const uint thread = threadID.x;
+
+	const uint triangle = min(wave * 64 + thread, m_triangles - 1);
+	const uint vertexSet = triangle / 16;
+
+	const uint i0 = g_index[triangle * 3 + 0];
+	const uint i1 = g_index[triangle * 3 + 1];
+	const uint i2 = g_index[triangle * 3 + 2];
+	const float3 p0 = g_position[i0];
+	const float3 p1 = g_position[i1];
+	const float3 p2 = g_position[i2];
+	g_mini[thread] = min(p0, min(p1, p2));
+	g_maxi[thread] = max(p0, max(p1, p2));
+	uint threads = 8;
+	while(threads)
+	{
+		if((thread & 0x0F) < threads)
+		{
+			g_mini[thread] = min(g_mini[thread], g_mini[thread + threads]);
+			g_maxi[thread] = max(g_maxi[thread], g_maxi[thread + threads]);
+		}
+		threads >>= 1;
+	}
+	g_boundingBoxMin[vertexSet] = g_mini[thread & 0x30];
+	g_boundingBoxMax[vertexSet] = g_maxi[thread & 0x30];
+}

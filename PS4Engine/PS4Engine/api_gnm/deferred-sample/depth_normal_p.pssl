@@ -1,0 +1,16 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+#include "deferred_common.hs"
+
+DEPTH_NORMAL_PS_OUT main( DEPTH_NORMAL_VS_OUT input )
+{
+	DEPTH_NORMAL_PS_OUT output = (DEPTH_NORMAL_PS_OUT)0;
+	output.m_normalSpecularPower.xyz = normalize( input.m_normalSpecularPower.xyz );
+	output.m_normalSpecularPower.w = input.m_normalSpecularPower.w;
+	return output; 
+}

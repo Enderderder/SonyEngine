@@ -1,0 +1,35 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2015 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+Texture2D texDiffuse	: register( t0 );
+SamplerState samLinear	: register( s0 );
+
+#pragma argument(gradientadjust=auto)
+
+struct VS_OUTPUT
+{
+    sample float4 pos			: S_POSITION;
+    sample float2 texcoord		: TEXCOORD0;
+	sample float4 posNdc		: TEXCOORD1;
+	sample float4 posNdcPrev	: TEXCOORD2;
+};
+
+struct PS_OUTPUT
+{
+	float4 colour	: S_TARGET_OUTPUT0;
+	float2 velocity	: S_TARGET_OUTPUT1;
+};
+
+PS_OUTPUT main( VS_OUTPUT input ) : S_TARGET_OUTPUT
+{
+	PS_OUTPUT output;
+	output.colour = texDiffuse.Sample( samLinear, input.texcoord );
+	output.velocity = input.posNdc.xy/input.posNdc.w - input.posNdcPrev.xy/input.posNdcPrev.w;
+
+	return output;
+}

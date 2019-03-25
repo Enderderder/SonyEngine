@@ -1,0 +1,15 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+RegularBuffer<uint> htileSrc		: register(t0);
+RW_RegularBuffer<uint> htileDst		: register(u0);
+
+[NUM_THREADS(64, 1, 1)]
+void main(short3 threadID : S_DISPATCH_THREAD_ID)
+{
+	// set zmask field to 0xf (expanded)
+	htileDst[threadID.x] = htileSrc[threadID.x] | 0xf;
+}

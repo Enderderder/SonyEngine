@@ -1,0 +1,39 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#define SCE_GEOMETRY_RESOLVE_SRGB_CONVERSION_ENABLED		1
+#define SCE_GEOMETRY_RESOLVE_DEBUG_VIEW_ENABLED				0
+
+#include "geometry_resolve_c.hs"
+
+Texture2D<half3>	texColor				: register(t0);			// quarter res color		 		1920 x 2160		rgba8
+MS_Texture2D<uint>	texIds					: register(t2);			// object+prim IDs					3840 x 2160		uint32
+MS_Texture2D<float> texDepth				: register(t6);			// depth							3840 x 2160		float
+Texture2D<half>		texCubicWeight			: register(t7);			// cubic filter weights				6 x    6		half 
+RW_Texture2D<half4> texResult				: register(u0);			// resolved color					3840 x 2160		rgba8
+
+ConstantBuffer cb
+{
+	uint	checkerboardId;		// not used here
+	uint	debugView;
+	bool	temporal;			// not used here
+	float	historyWeight;		// not used here
+};
+
+[NUM_THREADS(geometry_width,geometry_height,1)]
+void main(short2 threadID : S_DISPATCH_THREAD_ID, short2 laneID : S_GROUP_THREAD_ID)
+{
+	sceGnmApplyGeometryResolve(
+		threadID, 
+		laneID,
+		debugView,
+		texColor,
+		texIds,
+		texDepth,
+		texCubicWeight,
+		texResult
+	);
+}

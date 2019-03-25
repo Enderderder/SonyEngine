@@ -1,0 +1,19 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+ConsumeRegularBuffer<uint> consumeBuf : register(u0);
+RW_RegularBuffer<uint> outputBuf : register(u1);
+
+[NUM_THREADS(64, 1, 1)]
+void main( uint3 threadID : S_DISPATCH_THREAD_ID )
+{
+	if ((threadID.x % 2) == 0)
+		outputBuf[threadID.x] = consumeBuf.Consume();
+	else
+		outputBuf[threadID.x] = 0xFFFFFFFF;
+}

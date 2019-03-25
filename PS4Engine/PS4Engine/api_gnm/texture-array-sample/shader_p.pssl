@@ -1,0 +1,32 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2011 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+struct VS_OUT
+{
+	float4 position : S_POSITION;
+	float2 uv : TEXCOORD0;
+};
+
+ConstantBuffer shaderConsts
+{
+	uint offset;
+};
+
+Texture2D_Array<float4> g_texture;
+SamplerState g_sampler;
+
+// This shader shows how you can use a texture array and how its mipmapping is different from volume textures
+// Note: This shader was not written for efficiency
+float4 main( VS_OUT input ) : S_TARGET_OUTPUT
+{
+	unsigned int w,h,d; 
+	g_texture.GetDimensions(w,h,d); // get width, height and depth of the texture array dynamically
+	uint x = input.uv.x*(w-1)+offset; // scaled U or x index
+
+	float3 uvw = float3( float(x % w)/(w-1), input.uv.y , (x/w) % d);
+	float miplevel = (1-input.uv.x)*9 - 4;
+	return g_texture.SampleLOD(g_sampler, uvw, miplevel );
+}

@@ -1,0 +1,15 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+Texture2D<float4> Src : register(t0);
+RW_DataBuffer<float4> Dst : register(u0);
+
+[NUM_THREADS(1,1,1)]
+void main()
+{
+	Dst[0] = Src[uint2(0,0)];
+}
+

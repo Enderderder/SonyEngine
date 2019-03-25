@@ -1,0 +1,29 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "sh_outputs.hs"
+
+
+struct VS_INPUT
+{   
+    uint   uVertexID      : S_VERTEX_ID;
+};
+
+
+VS_OUTPUT main( VS_INPUT i )
+{
+	VS_OUTPUT Out;
+    
+   
+	// Just copy the texture coordinate through
+	Out.texCoord = 0;
+	Out.color = 0;
+    
+    Out.fake_prim_index = (i.uVertexID / 4);
+
+    return Out;
+}

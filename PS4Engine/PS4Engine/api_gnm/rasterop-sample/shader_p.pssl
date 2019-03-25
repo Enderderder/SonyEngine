@@ -1,0 +1,19 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+
+SamplerState samp0 : register(s0);
+
+Texture2D<int> colorMap : register( t0 );
+
+float4 main( VS_OUTPUT In ) : S_TARGET_OUTPUT
+{
+	int3 coords = int3(int(In.TextureUV.x*255.0), int(In.TextureUV.y*255.0), 0);
+	float diff_col = float(colorMap[coords]) / 255.0;
+	return float4( diff_col, diff_col, diff_col, 1);
+}

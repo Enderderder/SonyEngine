@@ -1,0 +1,37 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "sh_outputs.hs"
+
+#define TESS_FACTOR		4.1
+
+HS_CNST_OUTPUT ConstantsHS( /*InputPatch<LS_OUTPUT, NUM_INPUT_CTRL_POINTS_PER_PATCH> p, uint PatchID : S_PRIMITIVE_ID*/ )
+{
+    HS_CNST_OUTPUT output;
+    
+    output.edge_ts[0] = 2.1;	// left
+    output.edge_ts[1] = 2.7;	// bottom
+    output.edge_ts[2] = 3.4;	// right
+    output.edge_ts[3] = 4.1;	// top
+    output.insi_ts[0] = 3.7;	// upper and lower
+    output.insi_ts[1] = 2.9;	// left and right
+
+    return output;
+}
+
+[DOMAIN_PATCH_TYPE("quad")]
+[PARTITIONING_TYPE("fractional_odd")]
+//[PARTITIONING_TYPE("integer")]
+[OUTPUT_TOPOLOGY_TYPE("triangle_cw")]
+[OUTPUT_CONTROL_POINTS(4)]
+[PATCH_CONSTANT_FUNC("ConstantsHS")]
+//[MAX_TESS_FACTOR(11.0)]
+[MAX_TESS_FACTOR(16.0)]
+HS_OUTPUT main( InputPatch<HS_OUTPUT, NUM_INPUT_CTRL_POINTS_PER_PATCH> inputPatch, uint uCPID : S_OUTPUT_CONTROL_POINT_ID)
+{
+	return inputPatch[uCPID];
+}

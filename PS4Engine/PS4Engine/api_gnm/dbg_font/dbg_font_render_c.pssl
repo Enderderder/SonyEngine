@@ -1,0 +1,20 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "dbg_font_render.hs"
+
+RW_Texture2D<float4> OutputBuffer : register(u0);
+Texture2D<float4> InputBuffer : register(t2);
+
+[NUM_THREADS(8,8,1)]
+void main( uint2 position : S_DISPATCH_THREAD_ID )
+{	
+	float4 output = renderDebugText(position);
+	if(output.w == 0)
+		return;
+	OutputBuffer[position] = lerp(InputBuffer[position], output, output.w);
+}
+ 

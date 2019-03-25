@@ -1,0 +1,44 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2015 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+unistruct constants
+{
+	Matrix4Unaligned matWorldView;
+	Matrix4Unaligned matWorldViewProj;
+	Matrix4Unaligned matWorldViewProjPrev;
+	Matrix4Unaligned matWorldShadow;
+}
+
+struct VS_OUTPUT
+{
+    sample float4 pos					: S_POSITION;
+    sample float2 texcoord				: TEXCOORD0;
+    sample float3 normalView			: TEXCOORD1;
+    sample float4 tangentViewAndFlip	: TEXCOORD2;
+    sample float4 posLight				: TEXCOORD3;
+	sample float3 posView				: TEXCOORD4;
+	sample float4 posClip				: TEXCOORD5;
+	sample float4 posClipPrev			: TEXCOORD6;
+};
+
+VS_OUTPUT main(float4 pos : POSITION, float2 texcoord : TEXCOORD0, float3 normal : TEXCOORD1, float4 tangent : TEXCOORD2)
+{
+    VS_OUTPUT output;
+
+    output.pos = mul(pos, matWorldViewProj);
+    output.texcoord = texcoord;
+    output.normalView = mul(float4(normal, 0), matWorldView).xyz;
+    output.tangentViewAndFlip.xyz = mul(float4(tangent.xyz, 0), matWorldView).xyz;
+	output.tangentViewAndFlip.w = tangent.w;
+    output.posLight = mul(pos, matWorldShadow);
+	output.posView = mul(pos, matWorldView).xyz;
+	output.posClip = output.pos;
+	output.posClipPrev = mul(pos, matWorldViewProjPrev);
+
+    return output;
+}

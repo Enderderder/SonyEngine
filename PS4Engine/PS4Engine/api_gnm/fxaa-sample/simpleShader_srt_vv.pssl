@@ -1,0 +1,35 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+#include "std_srtstructs.h"
+
+struct VS_OUTPUT
+{
+    float4 Pos : S_POSITION;
+    float4 NormView : TEXCOORD0;
+    float2 TexCoord : TEXCOORD1;
+    float4 PosLight : TEXCOORD2;
+	float4 PosView : TEXCOORD3;
+};
+
+//--------------------------------------------------------------------------------------
+// Vertex Shader
+//--------------------------------------------------------------------------------------
+VS_OUTPUT main( float4 Pos : POSITION, float3 Normal : NORMAL, float2 TexCoord : TEXCOORD0, VSSrt data : S_SRT_DATA )
+{
+    VS_OUTPUT output = (VS_OUTPUT)0;
+
+    float4 vWorldPos = mul( float4(Pos.xyz, 1.0), data.constants[0].world );
+    float4 vWorldViewPos = mul( vWorldPos, data.constants[0].view );
+    output.Pos = mul( vWorldViewPos, data.constants[0].projection );
+    output.NormView = float4( mul( mul( float4( Normal.xyz,0 ), data.constants[0].world), data.constants[0].view).xyz, 0);
+    output.TexCoord = TexCoord;
+    output.PosLight = mul( vWorldPos, data.constants[0].shadow );
+	output.PosView = float4(vWorldViewPos.xyz, 1);
+    
+    return output;
+}

@@ -1,0 +1,33 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "sh_outputs.hs"
+
+
+[MAX_VERTEX_COUNT(3)]
+void main(inout TriangleBuffer<GSVS_ENTRY> TriStream, Triangle ESGS_ENTRY input[3])
+{
+    GSVS_ENTRY output;
+	
+	//uint point_index = input[0].uVertexID;
+	
+	// do shared calculations first
+	//uint i = point_index%NUMSEGS_X;
+	//uint j = point_index/NUMSEGS_X;
+	
+	output.vPosition.zw = float2(0, 1);
+	output.color = 1;
+	
+	// then produce strip vertex stream output
+	for(int v=0; v<3; v++)
+	{
+		output.vPosition.xy = input[v].vPosition.xy;
+		TriStream.Append( output );
+	}
+	
+	//TriStream.RestartStrip();		// start next strip
+}

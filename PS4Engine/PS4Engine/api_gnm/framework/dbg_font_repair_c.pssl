@@ -1,0 +1,63 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2015 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+ConstantBuffer constants : register(c0)
+{
+	uint m_screenWidthInCharacters;
+	uint m_screenHeightInCharacters;
+}
+
+RW_DataBuffer<uint> g_screen : register(u0);
+
+#define kFirstLineDrawCode 128
+#define	kLastLineDrawCode  143
+
+bool isLineDrawCharacter(uint code)
+{
+	return code >= kFirstLineDrawCode && code <= kLastLineDrawCode;
+}
+
+uint addLeft(uint c) {return c | 1;}
+uint addTop(uint c) {return c | 2;}
+uint addRight(uint c) {return c | 4;}
+uint addBottom(uint c) {return c | 8;}
+
+bool isLeftLineDrawCharacter(uint c) { return isLineDrawCharacter(c) && (c == addLeft(c)); }
+bool isTopLineDrawCharacter(uint c) { return isLineDrawCharacter(c) && (c == addTop(c)); }
+bool isRightLineDrawCharacter(uint c) { return isLineDrawCharacter(c) && (c == addRight(c)); }
+bool isBottomLineDrawCharacter(uint c) { return isLineDrawCharacter(c) && (c == addBottom(c)); }
+
+[NUM_THREADS(8,8,1)]
+void main(uint2 offset : S_DISPATCH_THREAD_ID)
+{
+    if(offset.x >= m_screenWidthInCharacters - 2)
+		return;
+    if(offset.y >= m_screenHeightInCharacters - 2)
+		return;
+	const uint cell_index = (1 + offset.y) * m_screenWidthInCharacters + (1 + offset.x);
+	const uint cell = g_screen[cell_index];
+	const uint code = cell & 0xFFFF;
+	if(!isLineDrawCharacter(code))
+		return;
+
+	uint me = code;
+	const int left  = g_screen[cell_index -                         1] & 0xffff;
+	const int up    = g_screen[cell_index - m_screenWidthInCharacters] & 0xffff;
+	const int right = g_screen[cell_index +                         1] & 0xffff;
+	const int down  = g_screen[cell_index + m_screenWidthInCharacters] & 0xffff;
+	if(isRightLineDrawCharacter(left))
+		me = addLeft(me);
+	if(isBottomLineDrawCharacter(up))
+		me = addTop(me);
+	if(isLeftLineDrawCharacter(right))
+		me = addRight(me);
+	if(isTopLineDrawCharacter(down))
+		me = addBottom(me);
+
+	if(me == code)
+		return;
+	g_screen[cell_index] = ( cell & 0xFFFF0000 ) | me;
+}

@@ -1,0 +1,63 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "sh_outputs.hs"
+
+
+/*struct VS_INPUT
+{
+    float3 Position     : POSITION;
+    //float2 TextureUV    : TEXCOORD1;
+    float4 vWeights0    : TEXCOORD2;
+    float4 vWeights1    : TEXCOORD3;
+    uint4 bone_mats0    : TEXCOORD4;
+    uint4 bone_mats1    : TEXCOORD5;
+};*/
+
+struct VS_INPUT
+{
+    float3 Position     : POSITION;
+    float4 vWeights0    : TEXCOORD0;
+    float4 vWeights1    : TEXCOORD1;
+    uint4 bone_mats0    : TEXCOORD2;
+    uint4 bone_mats1    : TEXCOORD3;
+	uint   uVertexID      : S_VERTEX_ID;
+};
+
+
+
+LS_OUTPUT main( VS_INPUT In )
+{
+	LS_OUTPUT Out;
+    
+    float3 vP = In.Position;
+    
+    // do skinning here
+	float fWeights[7] = {In.vWeights0.x, In.vWeights0.y, In.vWeights0.z, In.vWeights1.x, In.vWeights1.y, In.vWeights1.z, 0};
+	uint indices[7] = {In.bone_mats0.x, In.bone_mats0.y, In.bone_mats0.z, In.bone_mats1.x, In.bone_mats1.y, In.bone_mats1.z, 0};
+	int i = 0;
+	float3 vPacc = float3(0,0,0);
+	
+	//while(i<6 && fWeights[i]>0)
+	//while(fWeights[i]>0)
+	float fAcc = 0;
+	while(i<6)
+	{
+		vPacc += fWeights[i]*mul( float4(vP,1), g_mBones[indices[i]] ).xyz;
+		fAcc += fWeights[i];
+		++i;
+	}
+	//if(fAcc>0) vPacc *= (1/fAcc);
+	
+	vP = vPacc*g_fScale;
+	vP.x += g_fOffs;
+
+	Out.PosIndex.xyz = vP;
+	Out.PosIndex.w = asfloat(In.uVertexID);
+
+    return Out;
+}

@@ -1,0 +1,86 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "htile.hs"
+
+DataBuffer<uint> g_htileBuffer : register(t0);
+
+ConstantBuffer Constants1 : register(c1)
+{
+	int4 m_hiStencilModeDecoder[64];
+};
+
+ConstantBuffer Constants2 : register(c2)
+{
+	uint2 m_screenPixelOffset;
+};
+
+float InterpretField(uint tile_x, uint tile_y, uint field, uint layout)
+{
+	uint tileIndex = 0;
+	switch( layout )
+	{
+	case kHTileLayoutLinear:
+		tileIndex = HtileOffsetInDwords(tile_x, ps_tiles.x, tile_y, true, ps_tiles.z);
+		break;
+	case kHTileLayoutTiled:
+		tileIndex = HtileOffsetInDwords(tile_x, ps_tiles.x, tile_y, false, ps_tiles.z); 
+		break;
+	}
+	uint word = g_htileBuffer.Load(tileIndex);
+	float color = 0;
+	switch( field )
+	{
+		case kHTileNoStencilZMask:
+			color = extractfloat(word,0,4);
+			break;
+		case kHTileNoStencilMinZ:
+			color = extractfloat(word,4,14);
+			break;
+		case kHTileNoStencilMaxZ:
+			color = extractfloat(word,18,14); 
+			break;
+		case kHTileNoStencilDelta:
+			color = extractfloat(word,18,14) - extractfloat(word,4,14);
+			break;
+		case kHTileStencilZMask:
+			color = extractfloat(word,0,4);
+			break;
+		case kHTileStencilSR0:
+			color = extractfloat(word,4,2);
+			break;
+		case kHTileStencilSR1:
+			color = extractfloat(word,6,2);
+			break;
+		case kHTileStencilSMem:
+			color = extractfloat(word,8,2);
+			break;
+		case kHTileStencilXX:
+			color = extractfloat(word,10,2);
+			break;
+		case kHTileStencilDeltaZ:
+			color = extractfloat(word,12,6);
+			break;
+		case kHTileStencilBaseZ:
+			color = extractfloat(word,18,14);
+			break;
+		case kHTileStencilMinZMaxBase:			
+			color = max(           0, extractsigned(word,18,14) - m_hiStencilModeDecoder[extractunsigned(word,12,6)].x ) / (float)bitmask(14);
+			break;
+		case kHTileStencilMaxZMinBase:			
+			color = min( int(bitmask(14)), extractsigned(word,18,14) + m_hiStencilModeDecoder[extractunsigned(word,12,6)].x ) / (float)bitmask(14);
+			break;
+	}		
+	return color;
+}
+
+float4 main(float4 position : S_POSITION) : S_TARGET_OUTPUT
+{
+	uint2 pixel = (uint2)position.xy - m_screenPixelOffset;
+	const uint2 tile = pixel / ps_offset.z;
+	const float gray = InterpretField(tile.x, tile.y, ps_htileField.x, ps_layout.x);
+	return gray;
+}

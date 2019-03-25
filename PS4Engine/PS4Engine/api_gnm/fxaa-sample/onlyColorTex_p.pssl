@@ -1,0 +1,28 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+
+//--------------------------------------------------------------------------------------
+Texture2D txDiffuse : register( t0 );
+SamplerState samLinear : register( s0 );
+
+//--------------------------------------------------------------------------------------
+struct VS_OUTPUT
+{
+    float4 Pos     : S_POSITION;
+    float2 TexCoord : TEXCOORD0;
+};
+
+//--------------------------------------------------------------------------------------
+// Pixel Shader
+//--------------------------------------------------------------------------------------
+float4 main( VS_OUTPUT input ) : S_TARGET_OUTPUT
+{
+	return txDiffuse.Sample( samLinear, input.TexCoord );
+	//return float4(input.TexCoord.xy, 0 ,1);
+}

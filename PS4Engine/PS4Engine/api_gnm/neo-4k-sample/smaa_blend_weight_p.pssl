@@ -1,0 +1,30 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2017 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "smaa_porting.h"
+#include "smaa.hlsl"
+
+Texture2D<float4> texEdges	: register(t0);
+Texture2D<float4> texArea	: register(t1);
+Texture2D<float4> texSearch	: register(t2);
+
+ConstantBuffer cb
+{
+	uint		g_debugView;
+};
+
+struct VS_OUTPUT
+{
+    float4 position		: S_POSITION;
+    float2 uv			: TEXCOORD0;
+	float2 pixcoord		: TEXCOORD1;
+    float4 offset[3]	: TEXCOORD2;
+};
+
+float4 main(VS_OUTPUT input) : S_TARGET_OUTPUT
+{
+	return SMAABlendingWeightCalculationPS(input.uv, input.pixcoord, input.offset, texEdges, texArea, texSearch, 0/*subsampleIndices*/);
+}

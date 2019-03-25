@@ -1,0 +1,46 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+RW_Texture2D<float4> DestTex0 : register(u0);
+RW_Texture2D<float4> DestTex1 : register(u1);
+RW_Texture2D<float4> DestTex2 : register(u2);
+Texture2D<float4> SourceTex : register(t0);
+
+thread_group_memory float4 g_tile0[8][8];
+thread_group_memory float4 g_tile1[4][4];
+thread_group_memory float4 g_tile2[2][2];
+thread_group_memory float4 g_tile3[1][1];
+
+[NUM_THREADS(8,8,1)]
+void main( uint2 group : S_GROUP_ID, uint2 thread : S_GROUP_THREAD_ID )
+{
+	g_tile0[thread.y][thread.x] = SourceTex[group * 8 + thread];
+	if(thread.y < 4 && thread.x < 4)
+	{
+		g_tile1[thread.y][thread.x] = ( g_tile0[thread.y*2+0][thread.x*2+0]
+		                              + g_tile0[thread.y*2+0][thread.x*2+1]
+		                              + g_tile0[thread.y*2+1][thread.x*2+0]
+		                              + g_tile0[thread.y*2+1][thread.x*2+1] ) * 0.25;
+		DestTex0[group * 4 + thread] = g_tile1[thread.y][thread.x];
+	}
+	if(thread.y < 2 && thread.x < 2)
+	{
+		g_tile2[thread.y][thread.x] = ( g_tile1[thread.y*2+0][thread.x*2+0]
+		                              + g_tile1[thread.y*2+0][thread.x*2+1]
+		                              + g_tile1[thread.y*2+1][thread.x*2+0]
+		                              + g_tile1[thread.y*2+1][thread.x*2+1] ) * 0.25;
+		DestTex1[group * 2 + thread] = g_tile2[thread.y][thread.x];
+	}
+	if(thread.y < 1 && thread.x < 1)
+	{
+		g_tile3[thread.y][thread.x] = ( g_tile2[thread.y*2+0][thread.x*2+0]
+		                              + g_tile2[thread.y*2+0][thread.x*2+1]
+		                              + g_tile2[thread.y*2+1][thread.x*2+0]
+		                              + g_tile2[thread.y*2+1][thread.x*2+1] ) * 0.25;
+		DestTex2[group * 1 + thread] = g_tile3[thread.y][thread.x];
+	}
+}
+

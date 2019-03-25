@@ -1,0 +1,24 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+RegularBuffer<float4> g_lightPositionWorld : register(t0);
+RW_RegularBuffer<float4> g_lightPositionView : register(u0);
+
+Matrix4Unaligned g_viewMatrix;
+
+[NUM_THREADS(64,1,1)]
+void main(uint threadID : S_DISPATCH_THREAD_ID)
+{
+	float4 input = g_lightPositionWorld[threadID];
+	input.w = 1;
+	float4 output = mul(g_viewMatrix, input);
+	output.w = g_lightPositionWorld[threadID].w;
+	g_lightPositionView[threadID] = output;
+}
+
+

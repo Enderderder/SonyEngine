@@ -1,0 +1,29 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+struct VS_OUT
+{
+	float4 pos: S_POSITION;
+	float4 col: COLOR0;
+};
+
+struct VS_IN
+{
+	float4 pos: S_POSITION;
+	float4 col: COLOR0;
+};
+
+VS_OUT main(VS_IN inp)
+{
+	VS_OUT vs;
+
+	vs.pos = inp.pos;
+	vs.col = inp.col;
+
+	return vs;
+}

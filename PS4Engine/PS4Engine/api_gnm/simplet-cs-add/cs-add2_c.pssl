@@ -1,0 +1,17 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+DataBuffer<uint> Input0;
+DataBuffer<uint> Input1;
+RW_DataBuffer<uint> Output;
+
+[NUM_THREADS(64, 1, 1)]
+void main( uint3 threadID : S_DISPATCH_THREAD_ID )
+{
+    Output[threadID.x] = Input0[threadID.x] + Input1[threadID.x];
+}

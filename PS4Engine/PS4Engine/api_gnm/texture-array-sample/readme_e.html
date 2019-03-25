@@ -1,0 +1,184 @@
+﻿
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta http-equiv="Content-Style-Type" content="text/css">
+<meta http-equiv="Content-Script-Type" content="text/javascript">
+<xml>
+  <MSHelp:Attr Name="Locale" Value="kbEnglish"/>
+  <MSHelp:Attr Name="DocSet" Value="Sony Interactive Entertainment"/>
+</xml>
+<title>libgnm - Texture Array Sample</title>
+
+<style type="text/css"> 
+ <!-- 
+			body { font-family: Arial, Verdana, Helvetica; font-size: 100% }
+			h1, h2, h3, h4, h5, h6 { color: #000000 }
+			h1 {margin: 8px 0;}
+			h2 {border-bottom:1px solid #999999; padding-bottom: 3px; }
+			a { color: DarkBlue; }
+			a:hover, a:active { color: #FF4500; }
+			a:visited { color: DarkRed; }
+			p {margin:0.8em 0;}
+                        ul { margin: 1px 0 1px 2em; padding: 0; }
+			li { font-size: 100% }
+			pre.source { font-size: 100%; font-family: monospace; background-color: #eee; 
+						   background-repeat: repeat; background-attachment: scroll; 
+						   overflow: auto; display: block; border: 1px dashed #aaa; 
+						   margin: 10px 0; padding: 5px; background-position: 0% }
+			div.title1 { color: #000000; font-size: 180%; padding-left: 5px }
+			div.title2 { color: #000000; font-size: 160%; padding-left: 5px }
+			div.title3 { color: #000000; font-size: 140%; padding-left: 5px }
+			div.note { background-color: MistyRose; border: 1px solid Gray; margin: 10px 0; padding: 3px }
+			div.index {  background-color: #eee; border: 1px solid Gray; margin: 10px 0; padding: 3px }
+			span.back-to-top { font-size: 70% }
+			div.indent { font-size: 100%; margin-left: 2em }
+			div.header { font-size: 70%; color:#666666; }
+			table { font-size: 100%; border-collapse: collapse; margin: 5px }
+			td { vertical-align: top; border: 1px solid #ccc; padding-left: 4px; padding-right: 4px; padding-top: 3px; padding-bottom: 3px }
+			th { background-color: #f0f0f0; text-align: center; vertical-align: top; 
+						   border: 1px solid #ccc; padding-left: 4px; padding-right: 4px; 
+		-->
+</style>
+
+</head> 
+<body>
+<div class="header">
+<p>SIE CONFIDENTIAL</p>
+<p>Copyright (C) 2017 Sony Interactive Entertainment Inc. All Rights Reserved.</p>
+</div>
+
+<div class="introduction">
+<h1>libgnm - Texture Array Sample</h1>
+<h2>Overview</h2>
+<div class="indent">
+This sample demonstrates how to use texture arrays.
+</div>
+</div>
+
+<h2>Screenshot</h2>
+
+<div align=center><img src="screenshot.png"><br><p>Result</p></div>
+
+<h2>Explanation</h2>
+<div class="indent">
+This sample uses a texture array to render multiple textures using one T#.
+</div>
+
+<h2>Operation Manual</h2>
+<div class="indent">
+<p></p>
+
+<div class="title3">Controller Operation</div>
+<table border=1 width=500>
+<tr>
+<th>Action</th>
+<th>Behavior</th>
+</tr>
+
+<tr>
+<td>○ button</td>
+<td>Collapse current submenu</td>
+</tr>
+
+<tr>
+<td>△ button</td>
+<td>Display context-sensitive help</td>
+</tr>
+
+<tr>
+<td>× button</td>
+<td>Expand current submenu, or adjust item to next value</td>
+</tr>
+
+<tr>
+<td>up button</td>
+<td>Selects the previous item in the menu</td>
+</tr>
+
+<tr>
+<td>right button</td>
+<td>For menu items that adjust a value, selects the next value</td>
+</tr>
+
+<tr>
+<td>right analog stick</td>
+<td>Secondary adjustment, if any, for current menu item (e.g. rotate camera)</td>
+</tr>
+
+<tr>
+<td>left button</td>
+<td>For menu items that adjust a value, selects the previous value</td>
+</tr>
+
+<tr>
+<td>left analog stick</td>
+<td>For a menu item that adjusts a value, left-right motion of the analog stick moves the value down-up. For a menu item that adjusts two values, left-right motion adjusts the first value and down-up motion adjusts the second value.</td>
+</tr>
+
+<tr>
+<td>down button</td>
+<td>Selects the next item in the menu</td>
+</tr>
+
+<tr>
+<td>OPTIONS button</td>
+<td>Shows or hides the on-screen controller menu</td>
+</tr>
+
+</table>
+<br>
+
+<p><table>
+<tr><th colspan=2>Menu System</th></tr>
+<tr><th>Name</th><th>Description</th></tr>
+<tr><td>Pause</td><td>Pause or unpause simulation</td></tr>
+<tr><td>Buffer</td><td>Select a buffer to display<table>
+<tr><th>Name</th><th>Description</th></tr>
+<tr><td>Color</td><td>The RGB channels of the back buffer</td></tr>
+<tr><td>Alpha</td><td>The alpha channel of the back buffer</td></tr>
+</table>
+</td></tr>
+<tr><td>Seconds Elapsed</td><td>This is the apparent time since the start of the simulation. It can be adjusted with either the left stick or d-pad</td></tr>
+</table>
+<table>
+<tr><th colspan=5>Command Line Options</th></tr>
+<tr><th>Name</th><th>Description</th><th>Default Value</th><th>Minimum Value</th><th>Maximum Value</th></tr>
+<tr><td>buffers</td><td>number of render targets to allocate for round-robin display</td><td>3</td><td>2</td><td>3</td></tr>
+<tr><td>dcc</td><td>is there a DCC buffer for the render targets?</td><td>false</td><td></td><td></td></tr>
+<tr><td>stencil</td><td>is there a stencil buffer for the depth render targets?</td><td>false</td><td></td><td></td></tr>
+<tr><td>htile</td><td>is there an htile buffer for the depth render targets?</td><td>true</td><td></td><td></td></tr>
+<tr><td>microSecondsPerFrame</td><td>0=use OS clock, >0=use fixed microseconds per frame</td><td>0</td><td>0</td><td>100000</td></tr>
+<tr><td>displayBuffer</td><td>which buffer to display: the RGB channels of color buffer, alpha channel of color buffer, depth buffer, or stencil buffer</td><td>0</td><td>0</td><td>3</td></tr>
+<tr><td>cameraControls</td><td>false: camera controls are disabled, true: camera controls are enabled</td><td>true</td><td></td><td></td></tr>
+<tr><td>displayTimings</td><td>false: do not display frame timings, true: display frame timings</td><td>true</td><td></td><td></td></tr>
+<tr><td>clearColor</td><td>color to clear the backbuffer to</td><td>0</td><td>0</td><td>7</td></tr>
+<tr><td>log2CharacterWidth</td><td>log2 of the character width in pixels</td><td>3</td><td>3</td><td>5</td></tr>
+<tr><td>log2CharacterHeight</td><td>log2 of the character height in pixels</td><td>4</td><td>3</td><td>5</td></tr>
+<tr><td>interruptOnFlip</td><td>false: raise interrupt somewhat before flip, true: raise interrupt on flip</td><td>true</td><td></td><td></td></tr>
+</table>
+</p>
+</div>
+
+<h2>Changes</h2>
+<ul>
+
+<li>1.000</li>
+
+First release<br>
+
+</ul>
+
+<h2>Keywords</h2>
+<ul>
+
+<li>render</li>
+
+<li>texture</li>
+
+<li>graphics</li>
+
+</ul>
+
+</body>
+</html>

@@ -1,0 +1,31 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "sh_outputs.hs"
+
+
+
+HS_OUTPUT main( uint uVertexID : S_VERTEX_ID )
+{
+	HS_OUTPUT output;
+
+	uint patch_index = uVertexID / NUM_INPUT_CTRL_POINTS_PER_PATCH;
+	uint uCPID = uVertexID % NUM_INPUT_CTRL_POINTS_PER_PATCH;
+
+
+	int i = patch_index%NUMSEGS_X;
+	int j = patch_index/NUMSEGS_X;
+
+	int x = i + ((uCPID==0 || uCPID==3) ? 0 : 1);
+	int y = j + ((uCPID<2) ? 0 : 1);
+	const uint2 P = uint2(x,y);
+  
+	output.texCoord = 2*(((float2) P)/float2(NUMSEGS_X,NUMSEGS_Y))-float2(1,1);
+	output.color = ((float) patch_index) / (NUMSEGS_X*NUMSEGS_Y-1);
+
+	return output;
+}

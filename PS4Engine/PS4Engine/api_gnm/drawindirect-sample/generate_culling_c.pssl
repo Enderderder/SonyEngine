@@ -1,0 +1,53 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "cull_cb.h"
+
+
+DataBuffer<uint> g_index : register(t0);
+DataBuffer<float3> g_position : register(t1);
+
+RW_DataBuffer<uint> g_mayBeFrontFacing : register(u0);
+
+// each wave does 64 triangles (one triangle per thread)
+
+[NUM_THREADS(64, 1, 1)]
+void main(uint threadID : S_GROUP_THREAD_ID, uint3 groupID : S_GROUP_ID)
+{
+	const uint trianglePair = groupID.x * 64 + threadID.x;
+	bool trianglePairIsVisible = false;
+	for(uint triangle = trianglePair * 2; (triangle < (trianglePair+1) * 2) && !trianglePairIsVisible; ++triangle)
+	{
+		if(triangle >= m_triangles)
+			break;
+		const uint i0 = g_index[3 * triangle + 0];
+		const uint i1 = g_index[3 * triangle + 1];
+		const uint i2 = g_index[3 * triangle + 2];
+		const float3 p0 = g_position[i0];
+		const float3 p1 = g_position[i1];
+		const float3 p2 = g_position[i2];
+		for(int e = 0; e < 2; ++e)
+		{
+			const float3 a = p0 - m_eye[e].xyz;
+			const float3 b = p1 - m_eye[e].xyz;
+			const float3 c = p2 - m_eye[e].xyz;
+			const float3 bxc = cross(b, c);
+			if(dot(a, -bxc) > 0)
+			{
+			    trianglePairIsVisible = true;
+			    break;
+			}
+		}
+	}
+	if(trianglePairIsVisible)
+	{
+		const uint trianglePairs = (m_triangles + 1) / 2;
+		const uint triangleWords = (trianglePairs + 31) / 32;
+		const uint vertexSet     =  trianglePair / 8;
+		AtomicOr(g_mayBeFrontFacing[                trianglePair / 32], 1 << (trianglePair % 32));
+		AtomicOr(g_mayBeFrontFacing[triangleWords + vertexSet    / 32], 1 << (vertexSet    % 32));
+	}
+}

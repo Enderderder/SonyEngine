@@ -1,0 +1,17 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "dbg_font_render.hs"
+
+float4 main(float4 pos : S_POSITION) : S_TARGET_OUTPUT
+{
+	uint2 position = (uint2)pos;
+	float4 output = renderDebugText(position);
+	if(output.w == 0)
+		discard;
+	return output;
+}
+ 

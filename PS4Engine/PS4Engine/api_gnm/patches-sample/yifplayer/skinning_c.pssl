@@ -1,0 +1,72 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+
+
+
+struct SVertIn
+{
+	float3 pos, norm;
+	float4 tang;
+	uint4 weights;
+};
+
+struct SVertOut
+{
+	float3 pos, norm;
+	float4 tang;
+};
+
+RegularBuffer<SVertIn> g_MeshVertsIn : register( t0 );
+
+RW_RegularBuffer<SVertOut> g_MeshVertsOut : register( u0 );
+
+#define NR_THREADS	64
+
+//thread_group_memory SData data[NR_LPIXELS];
+
+//asuint
+// which group we are in relative to dispatch(): uint3 groupID : S_GROUP_ID
+// relative to actual num threads in group: uint3 threadID : S_GROUP_THREAD_ID
+// flattens S_GROUP_THREAD_ID into 1D: uint index : S_GROUP_INDEX
+
+// global thread id: uint3 globalID : S_DISPATCH_THREAD_ID
+
+[NUM_THREADS(NR_THREADS, 1, 1)]
+//void main(uint threadID : S_GROUP_INDEX, uint3 groupID : S_GROUP_ID)
+void main(uint3 threadID : S_DISPATCH_THREAD_ID)
+{
+	const uint t = threadID.x;
+	
+	const SVertIn vert = g_MeshVertsIn[t];
+	const uint4 si = vert.weights;			// get skinning info.
+	float3 vP = vert.pos.xyz;
+	float3 vN = vert.norm.xyz;
+	
+	// do skinning here
+	uint uiWeights[7] = {(si.x>>0)&0x3ff, (si.x>>10)&0x3ff, (si.x>>20)&0x3ff, (si.y>>0)&0x3ff, (si.y>>10)&0x3ff, (si.y>>20)&0x3ff, 0};
+	uint indices[7] = {(si.z>>0)&0x3ff, (si.z>>10)&0x3ff, (si.z>>20)&0x3ff, (si.w>>0)&0x3ff, (si.w>>10)&0x3ff, (si.w>>20)&0x3ff, 0};
+	int i = 0;
+	float3 vPacc = float3(0,0,0);
+	float3 vNacc = float3(0,0,0);
+	
+	//while(i<6 && uiWeights[i]>0)
+	while(uiWeights[i]>0)
+	{
+		vPacc += uiWeights[i]*mul( float4(vP,1), g_mBones[indices[i]] ).xyz;
+		vNacc += uiWeights[i]*mul( float4(vN,0), g_mBones[indices[i]] ).xyz;
+		++i;
+	}
+	
+	vP = vPacc;
+	vN = normalize(vNacc);
+	vP *= (1.0/1023);
+	
+	g_MeshVertsOut[t].pos.xyz = vP;
+	g_MeshVertsOut[t].norm.xyz = vN;
+	g_MeshVertsOut[t].tang = vert.tang;
+}

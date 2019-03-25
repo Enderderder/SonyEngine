@@ -1,0 +1,52 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+
+struct VS_INPUT
+{
+	float4 ModelMatrixCol0 : COL0;
+	float4 ModelMatrixCol1 : COL1;
+	float4 ModelMatrixCol2 : COL2;
+    float3 Position     : POSITION;
+    float3 Normal       : NORMAL;
+    float4 Tangent		: TEXCOORD0;
+    float2 TextureUV    : TEXCOORD1;
+};
+
+VS_OUTPUT main( VS_INPUT input )
+{
+	VS_OUTPUT Output;
+	//float3 vNormalWorldSpace;
+
+	Matrix4Unaligned matrixModel = { 
+		input.ModelMatrixCol0.x, input.ModelMatrixCol1.x, input.ModelMatrixCol2.x, 0.0,
+		input.ModelMatrixCol0.y, input.ModelMatrixCol1.y, input.ModelMatrixCol2.y, 0.0,
+		input.ModelMatrixCol0.z, input.ModelMatrixCol1.z, input.ModelMatrixCol2.z, 0.0,
+		input.ModelMatrixCol0.w, input.ModelMatrixCol1.w, input.ModelMatrixCol2.w, 1.0,
+	};
+	// With instancing, m_modelViewProjection actually holds view-projection matrix, and 
+	// m_modelView actually holds the view matrix.
+
+	// Transform the position from object space to homogeneous projection space
+	float4 vPos_objectSpace = mul( float4(input.Position.xyz,1), matrixModel );
+	Output.Position = mul( vPos_objectSpace, m_modelViewProjection );
+	
+	float4 vN_objectSpace = mul(float4(input.Normal,0), matrixModel);
+	float4 vT_objectSpace = mul(float4(input.Tangent.xyz,0), matrixModel);
+	float3 vN = normalize(mul( vN_objectSpace, m_modelView).xyz);
+	float3 vT = normalize(mul( vT_objectSpace, m_modelView).xyz);
+	Output.vPosInView = mul( vPos_objectSpace, m_modelView ).xyz;
+
+	Output.vNorm = vN;
+	Output.vTang = float4(vT, input.Tangent.w);
+
+	// Just copy the texture coordinate through
+	Output.TextureUV = input.TextureUV;
+
+	return Output;    
+}

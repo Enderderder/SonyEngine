@@ -1,0 +1,19 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2014 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+Texture2D g_texture : register(t0);
+SamplerState g_sampler : register(s0);
+
+ConstantBuffer g_constants : register(c0)
+{
+	float4 m_mul;
+	float4 m_add;
+};
+
+float4 main(float4 screen : S_POSITION) : S_TARGET_OUTPUT
+{
+	return g_texture.Sample(g_sampler, screen.xy * m_mul.xy + m_add.xy);
+}

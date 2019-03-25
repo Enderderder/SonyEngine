@@ -1,0 +1,59 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+#include "../toolkit/shader_common/illum.hs"
+#include "../toolkit/shader_common/noise.hs"
+
+
+
+
+
+float4 main( VS_OUTPUT In ) : S_TARGET_OUTPUT
+{
+	float3 unit_normal = normalize(In.vLocNrm.xyz);
+	return float4(0.5*unit_normal+0.5,1);
+#if 0
+	float3 unit_normal = normalize(In.vLocNrm.xyz);
+	float3 vL = normalize(g_vLightPos-In.vLocPos);
+	float3 vL2 = normalize(g_vLightPos2-In.vLocPos);
+	float3 vV = normalize(g_vCamPos-In.vLocPos);
+	
+	float3 vP = 30*In.vLocPos.xyz;
+	
+	// gradient of f(x,y,z) = cos(length(vP))
+	// df / dx = -x * sin(sqrt(x*x + y*y + z*z)) / sqrt(x*x + y*y + z*z);
+	const float fLen = length(vP);
+	//const float3 vGrad = normalize(vP) * -sin(fLen);
+	float3 vGrad = normalize(vP) * ( -sin(fLen) + cos(0.5*fLen) - sin(0.25*fLen));	// three octaves
+	
+	vGrad += 2*float3(mydnoise(vP*0.1).yzw);
+	
+	const float fBumpScale = 0.13;
+	float3 vN = PerturbNormal2(unit_normal, fBumpScale*vGrad);
+	
+	//float3 diff_col = 0.5*float3(0.6,0.86,1);
+	float3 diff_col = 0.5*float3(0.8,0.86,1);
+	float3 spec_col = 0.2*float3(1,0.8,0.7);
+	float surf_roughness = 32;		// relative to phong
+	
+	float fNormWorldY = 0.5*mul(vN, (float3x3)g_mWorld).y+0.5;
+	float3 vAmb = 0.4*0.2*lerp( float3(1,0.15,0.2), float3(0.2,0.3,1), fNormWorldY);
+	
+	float3 vDiff = 0;
+	float3 vLgtDir[] = {vL, vL2};
+	float3 vLgtCols[] = {0.6*float3(0.6, 0.8, 0.67), 1.3*float3(1,1,1)};
+	//const float m = toBeckmannParam(surf_roughness);
+	for(int k=0; k<2; k++)
+		//vDiff += vLgtCols[k]*BRDF2(vN, unit_normal, vLgtDir[k], vV, diff_col, spec_col);
+		vDiff += vLgtCols[k]*BRDF2_ts_nphong(vN, unit_normal, vLgtDir[k], vV, diff_col, spec_col, surf_roughness);
+	float3 res = vDiff+vAmb;
+	
+	return float4(res,1);
+	//return float4(0.5*vN.xyz+0.5, 1);
+#endif
+}

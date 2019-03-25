@@ -1,0 +1,18 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+RegularBuffer<uint> inputBuf : register(t0);
+AppendRegularBuffer<uint> appendBuf : register(u0);
+
+[NUM_THREADS(64, 1, 1)]
+void main( uint3 threadId : S_DISPATCH_THREAD_ID )
+{
+	uint x = inputBuf[threadId.x];
+	if ((x % 2) == 0)
+		appendBuf.Append(x);
+}

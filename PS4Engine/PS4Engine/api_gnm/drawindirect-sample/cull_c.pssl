@@ -1,0 +1,40 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "cull_cb.h"
+
+
+DataBuffer<uint> g_uIndexBuffer : register(t0);
+DataBuffer<float3> g_vPositionBuffer : register(t1);
+
+RW_DataBuffer<uint> g_uIndexBufferOut : register(u0);
+RW_DataBuffer<uint> g_uGlobTriCount : register(u1);		// just one entry
+
+[NUM_THREADS(64, 1, 1)]
+void main(uint threadID : S_GROUP_THREAD_ID, uint3 groupID : S_GROUP_ID)
+{
+	const uint inputTriangleIndex = groupID.x * 64 + threadID.x;
+	if(inputTriangleIndex >= g_uTotTriangles)
+		return;
+	const uint vertexIndex0 = g_uIndexBuffer[3 * inputTriangleIndex + 0];
+	const uint vertexIndex1 = g_uIndexBuffer[3 * inputTriangleIndex + 1];
+	const uint vertexIndex2 = g_uIndexBuffer[3 * inputTriangleIndex + 2];
+	const float3 p0 = g_vPositionBuffer[vertexIndex0];
+	const float3 p1 = g_vPositionBuffer[vertexIndex1];
+	const float3 p2 = g_vPositionBuffer[vertexIndex2];
+	const float3 P0 = mul(float4(p0,1), g_mMVP).xyw;
+	const float3 P1 = mul(float4(p1,1), g_mMVP).xyw;
+	const float3 P2 = mul(float4(p2,1), g_mMVP).xyw;
+	const float fDet = dot(P0, cross(P1, P2));
+	if(fDet > 0)
+	{
+		uint outputIndex;
+		AtomicAdd(g_uGlobTriCount[0], 3, outputIndex);		
+		g_uIndexBufferOut[outputIndex + 0] = vertexIndex0;
+		g_uIndexBufferOut[outputIndex + 1] = vertexIndex1;
+		g_uIndexBufferOut[outputIndex + 2] = vertexIndex2;
+	}		
+}

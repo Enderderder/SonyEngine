@@ -1,0 +1,122 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+#include "../toolkit/shader_common/illum.hs"
+#include "../toolkit/shader_common/noise.hs"
+
+
+SamplerState g_linSampler : register( s2 );
+Texture2D deriv_map : register( t2 );
+Texture2D height_map : register( t3 );
+
+
+float4 main( VS_OUTPUT In ) : S_TARGET_OUTPUT
+{
+	float3 unit_normal = normalize(In.vLocNrm.xyz);
+	float3 vL = normalize(g_vLightPos-In.vLocPos);
+	float3 vL2 = normalize(g_vLightPos2-In.vLocPos);
+	float3 vV = normalize(g_vCamPos-In.vLocPos);
+	
+	float3 vP = 10*In.vLocPos.xyz;
+	float2 vTileScale0 = 2*0.1*float2(1,1);
+	float2 vTileOffs0 = float2(0,0);
+	float2 vTileScale1 = 2*0.1*float2(1,1);
+	float2 vTileOffs1 = float2(0.04,0);
+	float2 vTileScale2 = 2*0.1*float2(1,1);
+	float2 vTileOffs2 = float2(0,0.03);
+
+	float3 bump_scales = float3(0.026, 0.06, 2*0.06);
+
+	float3 vPdx = ddx(vP);
+	float3 vPdy = ddy(vP);
+
+	// ZY plane
+	float2 vTexCoord0 = vTileScale0*vP.zy + vTileOffs0;
+	float2 dTdx0 = vTileScale0*vPdx.zy;
+	float2 dTdy0 = vTileScale0*vPdy.zy;
+
+	// ZX plane
+	float2 vTexCoord1 = vTileScale1*vP.zx + vTileOffs1;
+	float2 dTdx1 = vTileScale1*vPdx.zx;
+	float2 dTdy1 = vTileScale1*vPdy.zx;
+
+	// XY plane
+	float2 vTexCoord2 = vTileScale2*vP.xy + vTileOffs2;
+	//float2 dTdx2 = vTileScale2*vPdx.xy;
+	//float2 dTdy2 = vTileScale2*vPdy.xy;
+
+	// build weights
+	float3 weights = abs(unit_normal) - 0.2;
+	weights = max(pow(7*weights, 3), 0);
+	weights /= (weights.x+weights.y+weights.z);
+
+	weights *= bump_scales;
+
+	// compute height derivatives
+	float2 deriv0, deriv1, deriv2;
+	
+	// for ZY plane we use deriv_map
+	{
+		uint2 dim;
+		deriv_map.GetDimensions(dim.x, dim.y);
+		deriv0 = dim*(2*deriv_map.Sample(g_linSampler, vTexCoord0).xy-1);
+		deriv0.y *= -1.0;		// texture origin is upper left corner
+		deriv0 = float2( dot(deriv0, dTdx0), dot(deriv0, dTdy0) );							// to screen-space
+	}
+	
+	// for ZX plane we use a 2D procedural
+	{
+		float fS = 10, fS2=0.67;//0.2;
+		float2 vTmp = fS*vTexCoord1; vTmp-=floor(vTmp);
+		const float fDen = max(length(2*vTmp-1), 0.001);
+		const float L = saturate(1-fS2*fDen);
+
+#if 1
+		// compute derivative analytically of: L*L*(3 - 2*L) w.r.t. vTexCoord1
+		const float fTmp = 6*L*(1 - L);
+		const float dPds = (-2*fS*fS2*(2*vTmp.x-1)/fDen)*fTmp;
+		const float dPdt = (-2*fS*fS2*(2*vTmp.y-1)/fDen)*fTmp;
+		deriv1 = float2(dPds, dPdt);
+
+		// to screen-space
+		deriv1 = float2( dot(deriv1, dTdx1), dot(deriv1, dTdy1) );
+#else
+		// compute derivative numerically
+		const float P = L*L*(3 - 2*L);
+		deriv1 = float2( ddx_fine(P), ddy_fine(P) );							// screen-space
+#endif
+	}
+	
+	// for XY plane we use height_map
+	{
+		deriv2 = CalcDerivativesFwd(height_map, g_linSampler, vTexCoord2);			// screen-space
+	}
+
+	// mix screen-space height derivatives
+	// we use the same approximation as J. Blinn that the derivatives of the unit normal
+	// are approximately zero which means weights is a constant
+	float2 dHdx = weights.x*deriv0 + weights.y*deriv1 + weights.z*deriv2;
+	
+	float3 vN = PerturbNormalArbDomain(vPdx, vPdy, unit_normal, dHdx.x, dHdx.y);
+	
+	float3 diff_col = 0.5*float3(0.8,0.86,1);
+	float3 spec_col = 0.5*0.2*float3(1,0.8,0.7);
+	float surf_roughness = 16;		// relative to phong
+	
+	float fNormWorldY = 0.5*mul(vN, (float3x3)g_mWorld).y+0.5;
+	float3 vAmb = 0.4*0.2*lerp( float3(1,0.15,0.2), float3(0.2,0.3,1), fNormWorldY);
+	
+	float3 vDiff = 0;
+	float3 vLgtDir[] = {vL, vL2};
+	float3 vLgtCols[] = {1.3*float3(0.5,0.58,0.8), float3(1,1,1)};
+	for(int k=0; k<2; k++)
+		vDiff += vLgtCols[k]*BRDF2_ts_nphong_nofr(vN, unit_normal, vLgtDir[k], vV, diff_col, spec_col, surf_roughness);
+	float3 res = vDiff+vAmb;
+	
+	return float4(res,1);
+}

@@ -1,0 +1,52 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+
+
+struct VS_INPUT
+{
+    float3 Position     : POSITION;
+    float3 Normal       : NORMAL;
+    float4 Tangent      : TEXCOORD0;
+    float2 TextureUV    : TEXCOORD1;
+    float3 InstancePos  : POP0;
+    float3 Rate0Pos     : POP1;
+};
+
+
+VS_OUTPUT main( VS_INPUT input )
+{
+	VS_OUTPUT Output;
+
+	// Update input position:
+
+	// Transform the position from object space to homogeneous projection space
+	float3 pos = input.Position;
+
+	{
+		float3 offset = input.InstancePos + input.Rate0Pos;
+		pos += offset;
+	}
+
+	Output.Position = mul( float4(pos.xyz,1), m_modelViewProjection );
+
+
+	float3 vN = normalize(mul(float4(input.Normal,0), m_modelView).xyz);
+	float3 vT = normalize(mul(float4(input.Tangent.xyz,0), m_modelView).xyz);
+
+	float3 pos0 = input.Position;
+	Output.vPosInView = mul( float4(pos0.xyz,1), m_modelView ).xyz;
+
+	Output.vNorm = vN;
+	Output.vTang = float4(vT, input.Tangent.w);
+
+	// Just copy the texture coordinate through
+	Output.TextureUV = input.TextureUV;
+
+	return Output;
+}

@@ -1,0 +1,28 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+#include "deferred_common.hs"
+
+SamplerState g_albedoSpecularitySampler : register(s0); // the sampler for the above texture
+
+Texture2D<float4> g_diffuseLightTextureIn : register(t0); // accumulation of linear diffuse contributions from all lights
+Texture2D<float4> g_specularLightTextureIn : register(t1); // accumulation of linear specular contributions from all lights
+Texture2D g_albedoSpecularityTexture : register(t2); // texture with samples of albedo and specular power for the surface of an object
+
+MAIN_PS_OUT main( MAIN_VS_OUT input )
+{
+	MAIN_PS_OUT output = (MAIN_PS_OUT)0;
+	uint2 pixel;
+	pixel.x = (uint)input.m_position.x;
+	pixel.y = (uint)input.m_position.y;
+	float3 diffuse = g_diffuseLightTextureIn[pixel].xyz;
+	float3 specular = g_specularLightTextureIn[pixel].xyz;
+	float4 albedoSpecularity = g_albedoSpecularityTexture.Sample( g_albedoSpecularitySampler, input.m_uv );
+	output.m_color.rgb = albedoSpecularity.xyz * diffuse + specular;
+	output.m_color.a = 1;
+	return output;
+}

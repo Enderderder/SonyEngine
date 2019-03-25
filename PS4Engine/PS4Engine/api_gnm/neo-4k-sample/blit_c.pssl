@@ -1,0 +1,43 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#pragma argument(ttrace=1)
+
+Texture2D<half3> texSource			: register(t0);
+SamplerState SamplerLinear			: register(s1);
+RW_Texture2D<half4> texResult		: register(u0);
+
+
+ConstantBuffer cb
+{
+	float2					g_dimensions;
+	uint					g_checkerboardId;
+	uint					g_debugView;
+	uint					g_temporal;
+};
+
+half3 linear_to_srgb(half3 col)
+{
+    half3 x = col * 12.92;
+    half3 y = 1.055 * (half3)pow(col, 1.0 / 2.4) - 0.055;
+
+    half3 r;
+    r.r = col.r < 0.0031308 ? x.r : y.r;
+    r.g = col.g < 0.0031308 ? x.g : y.g;
+    r.b = col.b < 0.0031308 ? x.b : y.b;
+
+    return r;
+}
+
+[NUM_THREADS(8,8,1)]
+void main(short2 threadID : S_DISPATCH_THREAD_ID, short2 laneID : S_GROUP_THREAD_ID)
+{
+	float2 size;
+	texResult.GetDimensions(size.x, size.y);
+
+	texResult[threadID] = half4(linear_to_srgb(texSource.SampleLOD(SamplerLinear, (threadID + 0.5)/size, 0)),1);
+}
+ 

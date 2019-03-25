@@ -1,0 +1,12 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "histogram_structs.h"
+
+float4 main( VS_HISTOGRAM_OUTPUT In ) : S_TARGET_OUTPUT
+{
+	return In.Color;
+}

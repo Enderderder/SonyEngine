@@ -1,0 +1,108 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2011 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+#include "../toolkit/shader_common/illum.hs"
+#include "../toolkit/shader_common/noise.hs"
+
+
+Texture2D surface_detail_tex : register( t2 );		// either normals, derivatives or heights depending on shader
+Texture2D colspec_tex : register( t3 );
+Texture2D micro_tex : register( t4 );
+SamplerState g_linSampler : register( s2 );
+
+
+
+float4 main( VS_RET In ) : S_TARGET_OUTPUT
+{
+	const float2 texST = float2(In.vPos.w, In.vNrm.w);
+
+	const float3 geom_normal = normalize(In.vNrm.xyz);	
+	float3 vP = In.vPos.xyz;
+
+#ifdef DETAIL_MICRO_TEXTURE
+	const float fIntens = 1.10;		// increase effect of detail map by 10%
+	float2 dBdST = fIntens*(2*micro_tex.Sample(g_linSampler, 10*texST).xy-1);
+	float fMix = saturate(0.1-0.3*surface_detail_tex.GetLODUnclamped(g_linSampler, texST));
+	float fInvMix = 1-0.5*fMix;//-0.7*fMix;
+#endif
+
+#ifdef USE_TSPACE
+	// conventional normal mapping
+	const float3 vT = In.vTang;
+	const float3 vB = In.vBiTang;
+	float3 vNMapNorm;
+	vNMapNorm.xy = 2*surface_detail_tex.Sample(g_linSampler, texST).xy-1;
+	vNMapNorm.z = sqrt(1-vNMapNorm.x*vNMapNorm.x-vNMapNorm.y*vNMapNorm.y);
+#ifdef DETAIL_MICRO_TEXTURE
+	// not entirely accurate but looks fine
+	vNMapNorm.xy = vNMapNorm.xy*fInvMix + (-dBdST)*fMix;
+#endif
+
+	float3 vN = normalize(vNMapNorm.x*vT+vNMapNorm.y*vB+vNMapNorm.z*geom_normal);
+#else
+		// various alternatives methods which don't use
+		// conventional geometric tangent spaces
+		float2 dBdxy;
+	#ifdef USE_DERIV_MAP
+		bool bFlipVertDeriv = true;		// we flip TextureUV.y in the vertex shader
+		dBdxy = CalcDerivativesFromDerivMap(surface_detail_tex, g_linSampler, texST, bFlipVertDeriv);
+	#elif defined(USE_TAP1_STD)
+		dBdxy = CalcDerivativesFast(surface_detail_tex, g_linSampler, texST);
+	#elif defined(USE_TAP1_BIAS)
+		float height = surface_detail_tex.SampleBias(g_linSampler, texST, 1).x;
+		dBdxy.x = ddx_fine(height); dBdxy.y = ddy_fine(height);
+	#elif defined(USE_TAP3_FWD)
+		dBdxy = CalcDerivativesFwd(surface_detail_tex, g_linSampler, texST);
+	#elif defined(USE_BICUBIC)
+		dBdxy = CalcDerivativesBicubicToCen(surface_detail_tex, g_linSampler, texST);
+	#else
+		dBdxy = 0;
+	#endif
+
+	// apply bump scale
+	dBdxy *= g_fBumpScale;
+
+#ifdef DETAIL_MICRO_TEXTURE
+	const float2 TexDx = ddx(texST);		// these should be reused
+	const float2 TexDy = ddy(texST);
+	float dBx = dBdST.x * TexDx.x + (-1)*dBdST.y * TexDx.y;
+	float dBy = dBdST.x * TexDy.x + (-1)*dBdST.y * TexDy.y;
+	float fDetailBScale = 0.5*1.5*fMix * 2048.0 * g_fBumpScale;		// the scale by 2048 is to undo the material specific scale
+#ifndef USE_DERIV_MAP
+	fDetailBScale *= (1/32.0);
+#endif
+	dBdxy = dBdxy*fInvMix + fDetailBScale * float2(dBx, dBy);
+#endif
+
+	// perturb
+	float3 vN = PerturbNormalArb(vP, geom_normal, dBdxy.x, dBdxy.y);
+#endif
+
+	float3 vL = normalize(g_vLightPos-vP);
+	float3 vL2 = normalize(g_vLightPos2-vP);
+	float3 vV = normalize(float3(0,0,0)-vP);
+
+	float3 vAmb = 0.3*float3(0.18,0.2,0.3);
+	float surf_roughness = 30;
+
+	float4 colspec = colspec_tex.Sample(g_linSampler, texST);
+	float3 diff_col = colspec.xyz;	// 0.5
+	float3 spec_col = colspec.w;	// 0.5
+	
+	float3 vDiff = 0;
+	float3 vLgtDir[] = {vL, vL2};
+	float3 vLgtCols[] = {1.2*float3(0.6, 0.8, 0.67), 1.3*float3(1,1,1)};
+	//const float m = toBeckmannParam(surf_roughness);
+	for(int k=0; k<2; k++)
+		//vDiff += vLgtCols[k]*BRDF2(vN, geom_normal, vLgtDir[k], vV, diff_col, spec_col);
+		vDiff += vLgtCols[k]*BRDF2_ts_nphong(vN, geom_normal, vLgtDir[k], vV, diff_col, spec_col, surf_roughness);
+	float3 res = vDiff+diff_col*vAmb;
+
+	//	discard;
+	return float4(res, 1);
+}

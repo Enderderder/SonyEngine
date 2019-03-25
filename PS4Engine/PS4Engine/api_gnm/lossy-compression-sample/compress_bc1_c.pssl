@@ -1,0 +1,61 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "codec.hs"
+#include "bc1.hs"
+
+Texture2D<float4> g_uncompressedMip0 : register(t1); // MIP0 of the uncompressed source texture
+
+[NUM_THREADS(8, 8, 1)]
+void main(int2 threadID : S_GROUP_THREAD_ID, int2 groupID : S_GROUP_ID)
+{
+    const int2 blockID = (groupID * 8 + threadID);
+    const int2 texelID = blockID * 4;
+    const uint thread = threadID.y * 8 + threadID.x;
+
+    uint indices = 0;
+
+    MinMax minmax = findMinMax(texelID);
+    if(all(minmax.min == minmax.max))
+    {
+		indices = 0x55555555;
+    }
+    else
+    {
+        Endpoints endpoints = findEndpoints(minmax, texelID);
+        const uint e0 = encodeEndpointBc1(endpoints.a);
+        const uint e1 = encodeEndpointBc1(endpoints.b);
+
+        const float4 endpoint0 = decodeEndpointBc1(e0);
+        const float4 endpoint1 = decodeEndpointBc1(e1);
+              float4 delta = endpoint1 - endpoint0;
+        const float  denominator = dot(delta, delta);
+        if(denominator > 0.001)
+        {
+            delta *= 3 / denominator;
+            for(int i = 0; i < 16; ++i)
+            {
+	            const float4 texel = g_uncompressedMip0[texelID + uint2(i & 3, i >> 2)];
+                const int index = clamp(dot(delta, texel - endpoint0) + 0.5, 0.0, 3.0);
+                indices |= index << (i * 2);        
+            }
+        }
+    }
+
+    temp[thread] = indices;
+
+    if(thread < 32)
+        g_compressedMip0[blockID] = uint2(0);    
+    else
+    {
+        uint2 index;
+        index.x = temp[(thread - 32) * 2 + 0];
+        index.y = temp[(thread - 32) * 2 + 1];        
+        g_compressedMip0[blockID] = index;    
+    }
+}
+    
+

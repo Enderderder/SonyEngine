@@ -1,0 +1,71 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|ORBIS">
+      <Configuration>Debug</Configuration>
+      <Platform>ORBIS</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ORBIS">
+      <Configuration>Release</Configuration>
+      <Platform>ORBIS</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>alternatives-to-nmap-sample</ProjectName>
+    <ProjectGuid>{1886D8DC-DB35-43D8-8D00-AB2BFB1A3212}</ProjectGuid>
+    <RootNamespace>alternatives_to_nmap</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <GnmProjectType>Sample</GnmProjectType>
+  </PropertyGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+    <Import Project="$(SolutionDir)\SceGnm.props" Condition="Exists('$(SolutionDir)\SceGnm.props')" />
+    <Import Project="$(SCE_ORBIS_SDK_DIR)\host_tools\msbuild\SceGnm.props" Condition="!Exists('$(SolutionDir)\SceGnm.props')" />
+  </ImportGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'" Label="Configuration" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'" Label="Configuration" />
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.40219.1</_ProjectFileVersion>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ORBIS'" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ORBIS'" />
+  <ItemGroup>
+    <None Include="shader_p.pssx" />
+    <None Include="shader_vv.pssx" />
+    <None Include="vsoutput.hs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="std_cbuffer.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <PSSL Include="shader_1tapbias_micro_p.pssl" />
+    <PSSL Include="shader_1tapbias_p.pssl" />
+    <PSSL Include="shader_1tapstd_micro_p.pssl" />
+    <PSSL Include="shader_1tapstd_p.pssl" />
+    <PSSL Include="shader_3tap_micro_p.pssl" />
+    <PSSL Include="shader_3tap_p.pssl" />
+    <PSSL Include="shader_bicubic_micro_p.pssl" />
+    <PSSL Include="shader_bicubic_p.pssl" />
+    <PSSL Include="shader_deriv_micro_p.pssl" />
+    <PSSL Include="shader_deriv_p.pssl" />
+    <PSSL Include="shader_nobump_p.pssl" />
+    <PSSL Include="shader_notang_vv.pssl" />
+    <PSSL Include="shader_tang_micro_p.pssl" />
+    <PSSL Include="shader_tang_p.pssl" />
+    <PSSL Include="shader_tang_vv.pssl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="alternatives-to-nmap-sample.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(SolutionDir)\SceGnm.targets" Condition="Exists('$(SolutionDir)\SceGnm.targets')" />
+  <Import Project="$(SCE_ORBIS_SDK_DIR)\host_tools\msbuild\SceGnm.targets" Condition="!Exists('$(SolutionDir)\SceGnm.targets')" />
+</Project>

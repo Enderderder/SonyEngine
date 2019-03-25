@@ -1,0 +1,22 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+#include "vsoutput.hs"
+
+#define SUBPIX_SHIFT (1.0/4.0)
+
+VS_Fxaa2_OUTPUT main( uint uVertexID : S_VERTEX_ID )
+{
+    VS_Fxaa2_OUTPUT res;
+    
+	float2 rcp_frame = float2(1.0 / 1920.0, 1.0 / 1080.0);
+    res.vTexST.xy = float2(uVertexID & 2, (uVertexID << 1) & 2);
+	res.vTexST.zw = res.vTexST.xy - (rcp_frame * (0.5 + SUBPIX_SHIFT));
+    res.Position = float4(res.vTexST.xy * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
+
+    return res;
+}

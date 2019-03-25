@@ -1,0 +1,91 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "histogram_structs.h"
+
+#define TEXELS_PER_THREAD_XY	(8)	// Keep in sync with kNumTexelsPerThreadXY in histogram-gds-sample.cpp
+#define NUM_THREADS_PER_GROUP	(64)
+
+// USE_GDS must be defined.
+#ifndef USE_GDS
+	#error "USE_GDS is undefined."
+#endif
+
+SamplerState Sampler;
+Texture2D inputTexture;
+#if USE_GDS
+	global_memory HistogramColorData colorHistogramGds;
+#else
+	RW_DataBuffer<uint3> colorHistogramRWBuffer;
+#endif
+thread_group_memory HistogramColorData colorHistogramLds;
+
+[NUM_THREADS(NUM_THREADS_PER_GROUP, 1, 1)]
+void main( uint3 threadID : S_DISPATCH_THREAD_ID,  uint3 threadGroupID : S_GROUP_THREAD_ID )
+{
+	// Get texture dimensions
+	uint textureWidth, textureHeight;
+	inputTexture.GetDimensions(textureWidth, textureHeight);
+	float2 texelSize = float2(1.0f / textureWidth, 1.0f / textureHeight);
+
+	// Clear LDS memory if using LDS, since there are 64 threads
+	// per group, each thread clears 256 / 64 = 4 color cells.
+	for (uint i = 0; i < (kNumHistogramColors / NUM_THREADS_PER_GROUP); ++i)
+	{
+		uint histogramIndex = threadGroupID.x * 4 + i;
+		colorHistogramLds.pixelCount[histogramIndex][0] = 0;
+		colorHistogramLds.pixelCount[histogramIndex][1] = 0;
+		colorHistogramLds.pixelCount[histogramIndex][2] = 0;
+	}
+
+	// Accumulate histogram data into LDS memory
+	uint2 topLeftTexCoord = threadID.xy * uint2(TEXELS_PER_THREAD_XY, TEXELS_PER_THREAD_XY);
+	for (uint offsetX = 0; offsetX < TEXELS_PER_THREAD_XY; offsetX += 2)
+	{
+		for (uint offsetY = 0; offsetY < TEXELS_PER_THREAD_XY; offsetY += 2)
+		{
+			// Calculate gather location to be the corner of 4 texels
+			uint2 texCoord = topLeftTexCoord + uint2(offsetX, offsetY);
+			float2 texCoordGather = texCoord * texelSize + texelSize;
+
+			// Make sure this texcoord is in-bounds of input texture
+			if ((texCoord.x < textureWidth) && (texCoord.y < textureHeight))
+			{
+				// Convert texture color into histogram index for each channel
+				float4 reds = inputTexture.GatherRed(Sampler, texCoordGather);
+				float4 greens = inputTexture.GatherGreen(Sampler, texCoordGather);
+				float4 blues = inputTexture.GatherBlue(Sampler, texCoordGather);
+
+				// Process all gathered samples
+				for (uint gatherIndex = 0; gatherIndex < 4; ++gatherIndex)
+				{
+					uint histogramRed = uint(reds[gatherIndex] * (kNumHistogramColors - 1));
+					uint histogramGreen = uint(greens[gatherIndex] * (kNumHistogramColors- 1));
+					uint histogramBlue = uint(blues[gatherIndex] * (kNumHistogramColors - 1));
+
+					AtomicAdd(colorHistogramLds.pixelCount[histogramRed][0], 1);
+					AtomicAdd(colorHistogramLds.pixelCount[histogramGreen][1], 1);
+					AtomicAdd(colorHistogramLds.pixelCount[histogramBlue][2], 1);
+				}
+			}
+		}
+	}
+
+	// Sum up LDS data into GDS/RW buffer, each thread sums up several color intensities
+	for (uint i = 0; i < (kNumHistogramColors / NUM_THREADS_PER_GROUP); ++i)
+	{
+		uint histogramIndex = threadGroupID.x * 4 + i;
+	#if USE_GDS
+		AtomicAdd(colorHistogramGds.pixelCount[histogramIndex][0], colorHistogramLds.pixelCount[histogramIndex][0]);
+		AtomicAdd(colorHistogramGds.pixelCount[histogramIndex][1], colorHistogramLds.pixelCount[histogramIndex][1]);
+		AtomicAdd(colorHistogramGds.pixelCount[histogramIndex][2], colorHistogramLds.pixelCount[histogramIndex][2]);
+	#else
+		AtomicAdd(colorHistogramRWBuffer[histogramIndex][0], colorHistogramLds.pixelCount[histogramIndex][0]);
+		AtomicAdd(colorHistogramRWBuffer[histogramIndex][1], colorHistogramLds.pixelCount[histogramIndex][1]);
+		AtomicAdd(colorHistogramRWBuffer[histogramIndex][2], colorHistogramLds.pixelCount[histogramIndex][2]);
+	#endif
+	}
+}

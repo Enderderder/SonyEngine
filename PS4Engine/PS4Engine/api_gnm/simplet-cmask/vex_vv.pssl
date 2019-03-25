@@ -1,0 +1,31 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+float4 main(uint id : S_VERTEX_ID) : S_POSITION
+{
+	float x;
+	float y;
+
+	if ( id == 0 )
+	{
+		x = -0.5;
+		y = -0.4;
+	}
+	else if ( id == 1 )
+	{
+		x = 0;
+		y = 0.6;
+	}
+	else
+	{
+		x =  0.5;
+		y = -0.4;
+	}
+
+	return float4(x,y,0,1);
+}

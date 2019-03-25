@@ -1,0 +1,55 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "codec.hs"
+#include "bc1.hs"
+
+DataBuffer<uint> oneColorBlock : register(t1); // to accelerate compressing one-color blocks
+
+[NUM_THREADS(8, 8, 1)]
+void main(int2 threadID : S_GROUP_THREAD_ID, int2 groupID : S_GROUP_ID)
+{
+    const int2 blockID = (groupID * 8 + threadID);
+    const int2 texelID = blockID * 4;
+    const uint thread = threadID.y * 8 + threadID.x;
+
+    uint2 block = 0;
+
+    const MinMax minmax = findMinMax(texelID);
+    if(all(minmax.min == minmax.max))
+    {
+		const uint3 quantized = (uint3)clamp(minmax.min * 255 + 0.5, 0.0, 255.0);
+		block.x = (oneColorBlock[quantized.r] & 0xF800F800) | (oneColorBlock[quantized.g] & 0x07E007E0) | (oneColorBlock[quantized.b] & 0x001F001F);
+    }
+    else
+    {
+        const Endpoints endpoints = findEndpoints(minmax, texelID);
+        const uint e0 = encodeEndpointBc1(endpoints.a);
+        const uint e1 = encodeEndpointBc1(endpoints.b);
+        block.x = e0 | (e1 << 16);
+    }
+
+    if(thread >= 32) 
+    {
+        const uint2 index = g_compressedMip0[blockID];
+        temp[(thread - 32) * 2 + 0] = index.x;
+        temp[(thread - 32) * 2 + 1] = index.y;
+    }
+    block.y = temp[thread];
+
+    const bool swapped = (block.x & 0xFFFF) < (block.x >> 16);
+    if(swapped)
+    {
+        block.x = (block.x >> 16) | (block.x << 16);
+        block.y = 0xFFFFFFFF - block.y;
+    }
+    const uint lo = block.y & 0x55555555;
+    const uint hi = block.y & 0xaaaaaaaa;   
+    block.y = (hi >> 1) | (hi ^ (lo<<1));
+
+    g_compressedMip0[blockID] = block;
+}
+

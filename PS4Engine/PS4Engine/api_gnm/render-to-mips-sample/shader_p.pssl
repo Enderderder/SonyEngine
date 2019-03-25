@@ -1,0 +1,19 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "std_cbuffer.h"
+#include "vsoutput.hs"
+#include "../toolkit/shader_common/illum.hs"
+
+SamplerState samp0 : register(s0);
+
+Texture2D colorMap : register( t0 );
+
+float4 main( VS_OUTPUT In ) : S_TARGET_OUTPUT
+{
+	float3 diff_col = colorMap.Sample(samp0, In.TextureUV.xy).xyz;
+	return float4(diff_col, 1);
+}

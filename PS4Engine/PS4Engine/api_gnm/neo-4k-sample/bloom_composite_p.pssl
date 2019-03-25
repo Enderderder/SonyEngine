@@ -1,0 +1,49 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+Texture2D<float3> texBloom0	: register(t0);
+Texture2D<float3> texBloom1	: register(t1);
+Texture2D<float3> texBloom2	: register(t2);
+Texture2D<float3> texBloom3	: register(t3);
+Texture2D<float3> texBloom4	: register(t4);
+Texture2D<float3> texBloom5	: register(t5);
+Texture2D<float3> texBloom6	: register(t6);
+Texture2D<float3> texColor	: register(t7);
+SamplerState samplerPoint	: register(s0);
+SamplerState samplerLinear	: register(s1);
+
+ConstantBuffer cb
+{
+	uint		g_debugView;
+};
+
+struct VS_OUTPUT
+{
+    float4 position			: S_POSITION;
+	sample float2 uv		: TEXCOORD0;
+};
+
+float4 main(VS_OUTPUT input) : S_TARGET_OUTPUT
+{
+	// sample non-checkerboard bloom textures
+	float3 bloom1 = texBloom1.Sample(samplerLinear, input.uv);
+	float3 bloom2 = texBloom2.Sample(samplerLinear, input.uv);
+	float3 bloom3 = texBloom3.Sample(samplerLinear, input.uv);
+
+	float3 ilr0 = texBloom4.Sample(samplerLinear, 1 - input.uv);
+	float3 ilr1 = texBloom5.Sample(samplerLinear, 1 - input.uv);
+	float3 ilr = (ilr0 + ilr1) * float3(0.1, 0.1, 0.3);
+
+	float3 radial = texBloom6.Sample(samplerLinear, input.uv);
+
+	// sample checkerboard color texture
+	// note: must be point sampled - bilinear would produce incorrect results since input.uv is at sample location
+	float3 c = texColor.Sample(samplerPoint, input.uv);
+
+	float3 r = c + bloom2 + bloom3 + radial + ilr;
+
+	return float4(r, 1);
+}

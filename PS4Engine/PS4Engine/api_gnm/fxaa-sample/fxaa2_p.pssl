@@ -1,0 +1,64 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+#include "vsoutput.hs"
+
+#define ADJ_DISP_RANGE				8.0
+#define ADJ_LOWER_THRESHOLD			(1.0/128.0)
+#define ADJ_NORM_SCALE_FACTOR		(1.0/8.0)
+
+
+SamplerState g_sampler : register(s3);
+Texture2D	 imtex     : register(t0);
+
+float4 main(VS_Fxaa2_OUTPUT In) : S_TARGET_OUTPUT
+{
+	float3 res;
+	const float3 rgb_to_grey = float3(0.299, 0.587, 0.114);
+	const float2 rcp_frame = float2(1.0 / 1920.0, 1.0 / 1080.0);
+	
+	float3 pix_ul = imtex.SampleLOD(g_sampler, In.vTexST.zw, 0.0).xyz;
+	float3 pix_ur = imtex.SampleLOD(g_sampler, In.vTexST.zw, 0.0, int2(1,0)).xyz;
+	float3 pix_bl = imtex.SampleLOD(g_sampler, In.vTexST.zw, 0.0, int2(0,1)).xyz;
+	float3 pix_br = imtex.SampleLOD(g_sampler, In.vTexST.zw, 0.0, int2(1,1)).xyz;
+	float3 pix_m = imtex.SampleLOD(g_sampler, In.vTexST.xy, 0.0).xyz;
+    
+	// convert to luminance
+    float lumi_ul = dot(pix_ul, rgb_to_grey);
+    float lumi_ur = dot(pix_ur, rgb_to_grey);
+    float lumi_bl = dot(pix_bl, rgb_to_grey);
+    float lumi_br = dot(pix_br, rgb_to_grey);
+    float lumi_m  = dot(pix_m,  rgb_to_grey);
+
+	// determine the range
+    float lumi_min = min(lumi_m, min(min(lumi_ul, lumi_ur), min(lumi_bl, lumi_br)));
+    float lumi_max = max(lumi_m, max(max(lumi_ul, lumi_ur), max(lumi_bl, lumi_br)));
+
+	// compute the derivatives
+    float2 deriv; 
+    deriv.x = (lumi_ur + lumi_br) - (lumi_ul + lumi_bl);
+    deriv.y = (lumi_bl + lumi_br) - (lumi_ul + lumi_ur);		// bottom is forward in texture space
+
+	// rotate by -90 degrees
+	float2 rot_deriv = float2(deriv.y, -deriv.x);
+
+	// apply a conceptual normalize (depending on average intensity level)
+    float derivReduce = max( 0.25 * ADJ_NORM_SCALE_FACTOR*(lumi_ul + lumi_ur + lumi_bl + lumi_br), ADJ_LOWER_THRESHOLD);
+    float rcpoffs_deriv = 1.0 / (min(abs(rot_deriv.x), abs(rot_deriv.y)) + derivReduce);
+	rot_deriv = rcp_frame * clamp( (rot_deriv*rcpoffs_deriv), float2(-ADJ_DISP_RANGE, -ADJ_DISP_RANGE), float2( ADJ_DISP_RANGE,  ADJ_DISP_RANGE)) ;
+	
+	// finalize
+	float2 vST = In.vTexST.xy;
+    float3 col0 = 0.5 * ( imtex.SampleLOD(g_sampler, vST + rot_deriv * (1.0/3.0 - 0.5), 0.0).xyz + imtex.SampleLOD(g_sampler, vST + rot_deriv * (2.0/3.0 - 0.5), 0.0).xyz );
+    float3 col1 = 0.5*col0 + 0.25 * ( imtex.SampleLOD(g_sampler, vST + rot_deriv * (0.0/3.0 - 0.5), 0.0).xyz + imtex.SampleLOD(g_sampler, vST + rot_deriv * (3.0/3.0 - 0.5), 0.0).xyz );
+
+    float lumi = dot(col1, rgb_to_grey);
+	float mix = step(lumi_min, lumi) - step(lumi_max, lumi);
+	res = (1-mix)*col0 + mix*col1;
+
+	return float4(res, 1);
+}

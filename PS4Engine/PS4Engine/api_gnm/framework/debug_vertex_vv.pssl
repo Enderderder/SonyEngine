@@ -1,0 +1,31 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2015 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+struct VSIN
+{
+	float3 m_position : POSITION;
+	float4 m_color : TEXCOORD0;
+};
+
+struct VSOUT
+{
+	float4 m_position : S_POSITION;
+	float4 m_color : TEXCOORD0;
+};
+
+ConstantBuffer Constants : register(c0)
+{
+	float4x4 m_modelViewProjection;
+	float4 m_color;
+};
+
+VSOUT main(VSIN input) 
+{
+    VSOUT output;
+	output.m_position = mul(m_modelViewProjection, float4(input.m_position, 1));
+	output.m_color = input.m_color * m_color;
+	return output;
+}

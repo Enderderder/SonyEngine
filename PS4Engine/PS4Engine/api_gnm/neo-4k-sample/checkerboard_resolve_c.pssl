@@ -1,0 +1,61 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2017 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#define SCE_CHECKERBOARD_RESOLVE_TEMPORAL_ENABLED				1
+#define SCE_CHECKERBOARD_RESOLVE_SRGB_CONVERSION_ENABLED		1
+#define SCE_CHECKERBOARD_RESOLVE_DEBUG_VIEW_ENABLED				0
+#define SCE_CHECKERBOARD_RESOLVE_VELOCITY_SCALE_X				0.5f			// transform from NDC space to uv space
+#define SCE_CHECKERBOARD_RESOLVE_VELOCITY_SCALE_Y				-0.5f			// transform from NDC space to uv space
+#define	SCE_CHECKERBOARD_RESOLVE_USE_FRONTMOST_VELOCITY			1
+
+// Output edge information to a stencil buffer to accelerate SMAA processing.
+// Note: In order to match the SMAA edge detection algorithm, we only consider UP and LEFT neighbours when calculating the edges.
+#define	SCE_CHECKERBOARD_RESOLVE_OUTPUT_EDGES					1
+#define SCE_CHECKERBOARD_RESOLVE_OUTPUT_EDGES_UP				1
+#define SCE_CHECKERBOARD_RESOLVE_OUTPUT_EDGES_LEFT				1
+#define SCE_CHECKERBOARD_RESOLVE_OUTPUT_EDGES_DOWN				0
+#define SCE_CHECKERBOARD_RESOLVE_OUTPUT_EDGES_RIGHT				0
+
+#include "checkerboard_resolve_c.hs"
+
+Texture2D<half3>	texColor				: register(t0);			// checkerboard color		 		1920 x 2160		rgba8
+MS_Texture2D<uint>	texIds					: register(t2);			// object+prim IDs					3840 x 2160		uint32
+Texture2D<float>	texDepth				: register(t6);			// checkerboard depth				1920 x 2160		float
+Texture2D<half2>	texVelocity				: register(t4);			// checkerboard velocities			1920 x 2160		half2
+Texture2D<half4>	texHistory				: register(t5);			// color history					3840 x 2160		rgba8
+RW_Texture2D<half4> texResult				: register(u0);			// resolved color					3840 x 2160		rgba8
+RW_Texture2D<uint>  texEdges           		: register(u1);			// primitive edges 					3840 x 2160		r8
+
+ConstantBuffer cb
+{
+	uint	checkerboardId;
+	uint	debugView;
+	uint	temporal;
+	float	historyWeight;
+};
+
+[NUM_THREADS(8,8,1)]
+void main(short2 threadID : S_DISPATCH_THREAD_ID)
+{
+	sceGnmApplyCheckerboardResolve(
+		threadID, 
+		checkerboardId, 
+		debugView,
+		temporal,
+		historyWeight, 
+		texColor,
+		texIds,
+		texVelocity,
+		texHistory,
+#if SCE_CHECKERBOARD_RESOLVE_USE_FRONTMOST_VELOCITY
+		texDepth,
+#endif
+#if SCE_CHECKERBOARD_RESOLVE_OUTPUT_EDGES
+		texEdges,
+#endif
+		texResult
+	);
+}

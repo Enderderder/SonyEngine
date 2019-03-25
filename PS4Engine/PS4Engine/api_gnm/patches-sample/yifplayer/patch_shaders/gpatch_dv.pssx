@@ -1,0 +1,108 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2011 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+/* This is the Gregory Patch evaluation.
+ */
+
+#define GREGORY_PATCHES
+
+#include "../../../toolkit/shader_common/shader_base.h"
+#include "../std_cbuffer.h"
+#include "../sh_outputs.hs"
+
+
+float3 bezier_eval( const float3 bezpatch[16], float4 polyU, float4 polyV )
+{
+    float3 res = 0;
+
+    res  = polyV.x * ( bezpatch[0] * polyU.x + bezpatch[1] * polyU.y + bezpatch[2] * polyU.z + bezpatch[3] * polyU.w );
+    res += polyV.y * ( bezpatch[4] * polyU.x + bezpatch[5] * polyU.y + bezpatch[6] * polyU.z + bezpatch[7] * polyU.w );
+    res += polyV.z * ( bezpatch[8] * polyU.x + bezpatch[9] * polyU.y + bezpatch[10] * polyU.z + bezpatch[11] * polyU.w );
+    res += polyV.w * ( bezpatch[12] * polyU.x + bezpatch[13] * polyU.y + bezpatch[14] * polyU.z + bezpatch[15] * polyU.w );
+    
+    return res;
+}
+
+
+// This is a subset of the Bernstein Polynomials. These are used for evaluation of a bezier patch surface.
+float4 bern_polynomials(float t)
+{
+    return float4( (1-t)*(1-t)*(1-t), 3.0f*t*(1-t)*(1-t), 3.0f*t*t*(1-t), t*t*t );
+}
+
+// the derivative of each polynomial
+float4 bern_polynomials_deriv(float t)
+{
+    return float4( -3*(1-t)*(1-t), 3*(1-t)*(1-t) - 6*t*(1-t), 6*t*(1-t) - 3*t*t, 3*t*t );
+}
+
+void CorrectWeights(out float w0, out float w1, const float a, const float b)
+{
+	const float sum = a+b;
+	if(sum>0) { w0=a/sum; w1=b/sum; }
+	else { w0=0.5; w1=0.5; }
+}
+
+[DOMAIN_PATCH_TYPE("quad")]
+VS_OUTPUT main( HS_CNST_OUTPUT input, float2 domainCoordinates : S_DOMAIN_LOCATION, const OutputPatch<HS_OUTPUT, 4> greg_patch )
+{
+    VS_OUTPUT output = (VS_OUTPUT)0;
+
+	float2 uv = domainCoordinates;
+	
+	// synthesize surface position
+	float4 polyU = bern_polynomials( uv.x );
+	float4 polyV = bern_polynomials( uv.y );
+
+	float w0, w1;
+	CorrectWeights(w0, w1, uv.x, uv.y);
+	const float3 F0 = w0*greg_patch[0].fp.xyz+w1*greg_patch[3].fn_neigh.xyz;
+	CorrectWeights(w0, w1, 1-uv.x, uv.y);
+	const float3 F1 = w0*greg_patch[0].fn_neigh.xyz+w1*greg_patch[1].fp.xyz;
+	CorrectWeights(w0, w1, 1-uv.x, 1-uv.y);
+	const float3 F2 = w0*greg_patch[2].fp.xyz+w1*greg_patch[1].fn_neigh.xyz;
+	CorrectWeights(w0, w1, uv.x, 1-uv.y);
+	const float3 F3 = w0*greg_patch[2].fn_neigh.xyz+w1*greg_patch[3].fp.xyz;
+	
+	const float3 corner0 = float3(greg_patch[0].fp.w, greg_patch[0].fn_neigh.w, greg_patch[0].ep.w);
+	const float3 corner1 = float3(greg_patch[1].fp.w, greg_patch[1].fn_neigh.w, greg_patch[1].ep.w);
+	const float3 corner2 = float3(greg_patch[2].fp.w, greg_patch[2].fn_neigh.w, greg_patch[2].ep.w);
+	const float3 corner3 = float3(greg_patch[3].fp.w, greg_patch[3].fn_neigh.w, greg_patch[3].ep.w);
+
+
+	float3 positions[] = { corner0, greg_patch[0].ep.xyz, greg_patch[0].en_neigh.xyz, corner1,
+						   greg_patch[3].en_neigh.xyz, F0, F1,			greg_patch[1].ep.xyz, 
+						   greg_patch[3].ep.xyz,	   F3, F2,		 greg_patch[1].en_neigh.xyz, 
+						   corner3,		greg_patch[2].en_neigh.xyz, greg_patch[2].ep.xyz, corner2};
+
+	float3 surf_pos = bezier_eval( positions, polyU, polyV );
+
+	// synthesize first order derivatives
+	float4 deriv_polyU = bern_polynomials_deriv( uv.x );
+	float4 deriv_polyV = bern_polynomials_deriv( uv.y );
+	float3 sigmaU = bezier_eval( positions, deriv_polyU, polyV );
+	float3 sigmaV = bezier_eval( positions, polyU, deriv_polyV );
+
+
+	// build and normalize the surface normal
+	float3 norm = normalize( cross(sigmaU, sigmaV) );
+
+
+	output.vPosition = mul( float4(surf_pos,1), g_mLocToProj );
+	output.pos.xyz = mul( float4(surf_pos,1), g_mLocToView).xyz;
+	output.norm.xyz = mul( float4(norm,0), g_mLocToView).xyz;
+
+	const float2 texC0 = input.texCoord[0];
+	const float2 texC1 = input.texCoord[1];
+	const float2 texC2 = input.texCoord[2];
+	const float2 texC3 = input.texCoord[3];
+
+	const float2 texST = texC0*(1-uv.x)*(1-uv.y) + texC1*uv.x*(1-uv.y) + texC2*uv.x*uv.y + texC3*(1-uv.x)*uv.y;
+	output.pos.w = texST.x;
+	output.norm.w = texST.y;
+    
+	return output;
+}

@@ -1,0 +1,43 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+unistruct WVPS
+{
+	Matrix4Unaligned World;
+	Matrix4Unaligned View;
+	Matrix4Unaligned Projection;
+	Matrix4Unaligned Shadow;
+}
+
+//--------------------------------------------------------------------------------------
+struct VS_OUTPUT
+{
+    float4 Pos : S_POSITION;
+    float4 NormView : TEXCOORD0;
+    float2 TexCoord : TEXCOORD1;
+    float4 PosLight : TEXCOORD2;
+	float4 PosView : TEXCOORD3;
+};
+
+//--------------------------------------------------------------------------------------
+// Vertex Shader
+//--------------------------------------------------------------------------------------
+VS_OUTPUT main( float4 Pos : POSITION, float3 Normal : NORMAL, float2 TexCoord : TEXCOORD0 )
+{
+    VS_OUTPUT output = (VS_OUTPUT)0;
+
+    float4 vWorldPos = mul( float4(Pos.xyz, 1.0), World );
+    float4 vWorldViewPos = mul( vWorldPos, View );
+    output.Pos = mul( vWorldViewPos, Projection );
+    output.NormView = float4( mul( mul( float4( Normal.xyz,0 ), World), View).xyz, 0);
+    output.TexCoord = TexCoord;
+    output.PosLight = mul( vWorldPos, Shadow );
+	output.PosView = float4(vWorldViewPos.xyz, 1);
+    
+    return output;
+}

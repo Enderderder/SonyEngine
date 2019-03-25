@@ -1,0 +1,56 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+#pragma argument(gradientadjust=always)
+#pragma argument(samplerate=never)
+
+
+Texture2D texDiffuse	: register(t0);
+SamplerState samLinear	: register(s0);
+
+ConstantBuffer cb
+{
+	uint	checkerboardId;
+	uint	debugView;
+	uint	temporal;
+	float	historyWeight;
+};
+
+struct VS_OUTPUT
+{
+    sample float4 pos			: S_POSITION;
+	sample float2 texcoord		: TEXCOORD0;
+};
+
+float set_lsb(float f, uint b)
+{
+	uint u = bit_cast<uint>(f);
+	u &= ~1;
+	u |= b;
+	return bit_cast<float>(u);
+}
+
+uint main(VS_OUTPUT input) : S_COVERAGE
+{
+	uint lane_id = MaskBitCnt(~0ul);
+
+	float2 dtdx = ddx_fine(input.texcoord);
+	if(((lane_id >> 1) & 1) ^ checkerboardId)
+	{
+		dtdx = -dtdx;
+	}
+
+	float2 tc0 = input.texcoord;
+	float2 tc1 = input.texcoord + dtdx * 0.5;
+	tc0.x = set_lsb(tc0.x,0);
+	tc1.x = set_lsb(tc1.x,1);
+
+	float alpha0 = texDiffuse.Sample( samLinear, tc0).w;
+	float alpha1 = texDiffuse.Sample( samLinear, tc1).w;
+	return ((alpha0 > 0.5)?1:0) | ((alpha1 > 0.5)?2:0);
+}

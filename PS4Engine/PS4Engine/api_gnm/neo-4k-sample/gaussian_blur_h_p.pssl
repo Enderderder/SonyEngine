@@ -1,0 +1,42 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2016 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+Texture2D<float3> tex		: register(t0);
+SamplerState sampler		: register(s0);
+
+ConstantBuffer cb
+{
+	uint		g_debugView;
+};
+
+struct VS_OUTPUT
+{
+    float4 position		: S_POSITION;
+	float2 uv			: TEXCOORD0;
+};
+
+float4 main(VS_OUTPUT input) : S_TARGET_OUTPUT
+{
+	float weights[9] = {
+		0.026995484,
+		0.064758800, 
+		0.120985366, 
+		0.176032662, 
+		0.199471146, 
+		0.176032662, 
+		0.120985366, 
+		0.064758800, 
+		0.026995484
+	};
+
+	float3 c = 0;
+	for(int i=0; i<9; ++i)
+	{
+		c += tex.Sample(sampler, input.uv, int2(i-4, 0)) * weights[i];
+	}
+
+	return float4(c, 1);
+}

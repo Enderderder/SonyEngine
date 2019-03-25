@@ -1,0 +1,22 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2013 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "../toolkit/shader_common/shader_base.h"
+
+SamplerState Sampler;
+
+Texture3D colorMap;
+
+struct VS_OUTPUT
+{
+    float4 Position     : S_POSITION;
+    float3 WorldPos	    : TEXCOORD0;
+};
+
+float4 main( VS_OUTPUT input ) : S_TARGET_OUTPUT
+{
+	return colorMap.Sample(Sampler, input.WorldPos.xyz);
+}

@@ -1,0 +1,359 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2011 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+/* Optimized version of quads only "Gregory Patches".
+ */
+
+#define GREGORY_PATCHES
+
+#include "../../../toolkit/shader_common/shader_base.h"
+#include "../std_cbuffer.h"
+#include "../sh_outputs.hs"
+
+
+//--------------------------------------------------------------------
+// Each quad of the control mesh is surrounded by a sequence of
+// vertices which belong to the neighboring quads of this mesh.
+// This is known as a 1-Ring. The implementation here assumes that InputPatch<>
+// consists of the center quad and the surrounding 1-Ring. An example is shown below.
+//
+//					11
+//				   / \
+//                /   \
+//		 13_____12	   10__ 9 
+//		 | \	 \	   /   /
+//		 |  \	  \	  /   /
+//		 |   \	   \ /	 /
+//		 |	  3-----2---8
+//		 |	  |		|	|
+//		 |	  |		|	|
+//		 4----0-----1	|
+//		/	   \	 \	|
+//	   /		\	  \	|
+//	  /__________\_____\|
+//	 5			 6		 7
+//
+//	 Prefixes:				Valences:
+//	 Vertex 0:	7			Vertex 0:		4
+//	 Vertex 1:	8			Vertex 1:		3
+//	 Vertex 2:	13			Vertex 2:		5
+//	 Vertex 3:	14 (==4)	Vertex 3:		3
+//
+//	The prefix represents the first vertex of the 1-ring that is
+//	directly connected to the following vertex of the center quad.
+//	The valence is the numer of faces surrounding a vertex of the center quad.
+//	These inputs are used to navigate through the vertices of InputPatch<>.
+//	From this 20 control points are produced which represent a curved
+//	surface for the center quad. The reason more than 16 control points
+//	are built with Gregory patches is to ensure a continuous transition of
+//	normals from an irregular patch to the adjacent patch.
+//	A general implementation of Gregory patches supports triangles as well as quads
+//	though this increases the complexity of the implementation. The implementation
+//	here is specialized for quads only.
+//
+//	The 20 control points which are built by this hull shader can be divided into 5 categories:
+//	corners Ci, positive edge points Ep_i, negative edge points En_i, positive interior points Fp_i
+//	and finally negative interior points Fn_i
+//	Since there are 4 points within each category we can distribute the work efficiently
+//	across 4 threads (per patch). The symmetry is shown below.
+//
+//
+//			 C3		  En_3		 Ep_2		 C2
+//		
+//			Ep_3	   Fn_3		Fp_2		En_2
+//					 Fp_3		  Fn_2		
+//					 Fn_0		  Fp_1		
+//			En_0	   Fp_0		Fn_1		Ep_1
+//
+//			 C0		  Ep_0		 En_1		 C1
+//
+//
+//	In our implementation each thread 'i' outputs Ci, Ep_i, En_{(i+1)&3}, Fp_i and Fn_{(i+1)&3}.
+//--------------------------------------------------------------------
+
+
+#ifndef M_PI
+#define M_PI		3.1415926535897932384626433832795
+#endif
+
+
+DataBuffer<float2> g_v2TexCoordinates : register( t0 );
+#ifdef READ_VERTS_IN_HS
+DataBuffer<float3> g_v3PositionBuffer;
+DataBuffer<uint> g_uIndexBuffer;
+#endif
+DataBuffer<uint2> g_uPreValData;
+
+#ifdef READ_VERTS_IN_HS
+
+#define NR_INPUT_CTRL_POINTS		1
+
+#define FETCHINDEX(pi, i)		g_uIndexBuffer[32*(pi) + (i)]
+#define FETCHPOS(pi, i)			(g_fScale*g_v3PositionBuffer[FETCHINDEX(pi, i)]+float3(g_fOffs,0,0))
+
+#else
+
+#define NR_INPUT_CTRL_POINTS		32
+#define FETCHPOS(pi, i)		ip[i].PosIndex.xyz
+
+#endif
+
+
+HS_CNST_OUTPUT ConstantsHS( InputPatch<LS_OUTPUT, NR_INPUT_CTRL_POINTS> ip, uint patch_index_in : S_PRIMITIVE_ID, const OutputPatch<HS_OUTPUT, 4> res_patch )
+{
+    HS_CNST_OUTPUT output = (HS_CNST_OUTPUT)0;
+    
+    for(int i=0; i<4; i++)
+	{
+		output.edge_ts[i] = g_fTessFactor;
+		output.insi_ts[i&1] = g_fTessFactor;
+	}
+
+#ifdef READ_VERTS_IN_HS
+	uint patch_index = ip[0].uPrimIndex;
+#else
+	uint patch_index = patch_index_in;
+#endif
+	
+	
+	for(int i=0; i<4; i++)
+	{
+#ifdef READ_VERTS_IN_HS
+		uint uVIndex = FETCHINDEX(patch_index, i);
+#else
+		uint uVIndex = asuint(ip[i].PosIndex.w);
+#endif
+		output.texCoord[i] = g_v2TexCoordinates[uVIndex];
+	}
+	
+    return output;
+}
+
+float CalcLambda(const int valence)
+{
+	const float cs = cos((2*M_PI)/valence);
+	return (1/16.0)*(5+cs+cos(M_PI/valence)*sqrt(18 + 2*cs) );
+}
+
+void AccCornerAttributes( out float3 Corner, out float3 TanU, out float3 TanV,
+                          const in InputPatch<LS_OUTPUT, NR_INPUT_CTRL_POINTS> ip,
+						  const uint index,
+						  const uint patch_index,
+						  const int prevprefix_c, const int prefix, 
+						  const uint valence,
+						  const float3 PosLu, const float3 PosLm,
+						  const float3 PosCu, const float3 PosCm,
+						  const float3 PosRu, const float3 PosRm, const float3 PosRd );
+
+[DOMAIN_PATCH_TYPE("quad")]
+//[PARTITIONING_TYPE("fractional_odd")]
+[PARTITIONING_TYPE("integer")]
+[OUTPUT_TOPOLOGY_TYPE("triangle_cw")]
+[OUTPUT_CONTROL_POINTS(4)]
+[PATCH_CONSTANT_FUNC("ConstantsHS")]
+[MAX_TESS_FACTOR(16.0)]
+HS_OUTPUT main( InputPatch<LS_OUTPUT, NR_INPUT_CTRL_POINTS> ip, uint uCPID : S_OUTPUT_CONTROL_POINT_ID, uint patch_index_in : S_PRIMITIVE_ID )
+{  
+    HS_OUTPUT    output = (HS_OUTPUT)0;
+    
+#ifdef READ_VERTS_IN_HS
+	uint patch_index = ip[0].uPrimIndex;
+#else
+	uint patch_index = patch_index_in;
+#endif
+
+	uint2 uData = g_uPreValData[patch_index];
+
+	int i=uCPID;
+
+	const int prefix = (uData.x>>(i*8))&0xff;
+	const int prefix_c = i==3 ? 4 : prefix;
+	const int prevprefix = (uData.x>>(((i-1)&0x3)*8))&0xff;
+	const int prevprefix_c = i==0 ? 4 : prevprefix;
+
+	const float3 PosRu = FETCHPOS(patch_index, (i+2)&0x3 );
+	const float3 PosRm = FETCHPOS(patch_index,  (i+1)&0x3 );
+	const float3 PosRd = FETCHPOS(patch_index,  prefix_c );
+
+	const float3 PosCu = FETCHPOS(patch_index,  (i+3)&0x3 );
+	const float3 PosCm = FETCHPOS(patch_index,  i );
+	const float3 PosCd = FETCHPOS(patch_index,  prefix-1 );
+
+
+
+	{
+		// Build first corner
+		const float3 PosLu = FETCHPOS(patch_index,  prevprefix-1 );
+		const float3 PosLm = FETCHPOS(patch_index, prevprefix_c );
+
+		int valence_l = (uData.y>>(i*8))&0xff;
+		float3 cornL, tanUL, tmp;
+		AccCornerAttributes(cornL, tanUL, tmp, ip, i, patch_index, prevprefix_c, prefix, valence_l,
+							PosLu, PosLm, PosCu, PosCm, PosRu, PosRm, PosRd);
+		
+		if(valence_l!=4)
+		{
+			const float lambda_l_x2 = 2*CalcLambda(valence_l);
+			output.ep.xyz = cornL + (lambda_l_x2/3)*tanUL;
+		}
+		else
+		{
+			float div_l = 2 * valence_l + 10;
+			output.ep.xyz = (valence_l*2*PosCm + 4*PosRm + PosRu + PosCu*2 + 2*PosCd + PosRd) / div_l;
+		}
+		output.fp.w = cornL.x;
+		output.fn_neigh.w = cornL.y;
+		output.ep.w = cornL.z;
+		
+
+
+		// build second corner
+		const int i_next = (i+1)&0x3;
+		const int prefix_next = (uData.x>>(i_next*8))&0xff;
+		const int prefix_next_c = i==2 ? 4 : prefix_next;
+
+		//const float3 PosA = FETCHPOS(patch_index,  prefix_next-1 );
+		const float3 PosB = FETCHPOS(patch_index,  prefix_next_c );
+
+		int valence_r = (uData.y>>(i_next*8))&0xff;
+		float3 cornR, tanUR;
+		AccCornerAttributes(cornR, tmp, tanUR, ip, i_next, patch_index, prefix_c, prefix_next, valence_r,
+							PosCd, PosRd,
+							PosCm, PosRm,// PosA,
+							PosCu, PosRu, PosB);
+
+		// produce fp and fn ctrl points
+		if(valence_r!=4)
+		{
+			const float lambda_r_x2 = 2*CalcLambda(valence_r);
+			output.en_neigh.xyz = cornR + (lambda_r_x2/3)*tanUR;
+		}
+		else
+		{
+			float div_r = 2 * valence_r + 10;
+			output.en_neigh.xyz = (4*PosCm + valence_r*2*PosRm + PosRu*2 + PosCu + PosCd + 2*PosRd) / div_r;
+		}
+
+
+		const float3 rp = (2*(PosCu-PosCd)+(PosRu-PosRd))/6;
+		const float3 rn_neigh = ((PosCu-PosCd)+2*(PosRu-PosRd))/6;
+
+		const float c0 = cos((2*M_PI)/valence_l);
+		const float c1 = cos((2*M_PI)/valence_r);
+		output.fp.xyz = (1/3.0)*(c1*cornL + (3-2*c0-c1)*output.ep.xyz + 2*c0*output.en_neigh.xyz + rp);
+
+		output.fn_neigh.xyz = (1/3.0)*(c0*cornR + (3-2*c1-c0)*output.en_neigh.xyz + 2*c1*output.ep.xyz + rn_neigh);
+	}
+
+ 
+  
+    return output;
+}
+
+
+// In a quads only scenario the corner position of Gregory is identical to ACC.
+// the vector, q, is identical to the tangent evaluated in ACC. However, since
+// the edge points depend on, q, for Gregory patches the incremental approach
+// we use for ACC results in cracks between adjacent patches. So in this shader we
+// use this non incremental variant instead to evaluate the tangent.
+
+#define COSODD(a,v)			(cos( ( 2 * M_PI * (a) + M_PI ) / ( float )(v) ))
+#define COSEVEN(a,v)		(cos( ( 2 * M_PI * (a) ) / ( float )(v) ))
+
+void AccCornerAttributes( out float3 Corner, out float3 TanU, out float3 TanV,
+                          const in InputPatch<LS_OUTPUT, NR_INPUT_CTRL_POINTS> ip,
+						  const uint index,
+						  const uint patch_index,
+						  const int prevprefix_c, const int prefix, 
+						  const uint valence,
+						  const float3 PosLu, const float3 PosLm,
+						  const float3 PosCu, const float3 PosCm,
+						  const float3 PosRu, const float3 PosRm, const float3 PosRd )
+{
+    const float fOdd = 1;
+    const float fEven = 4;
+
+	const float fCosDelta = cos( M_PI / valence );
+    const float fTmp = valence * sqrt( 4.0 + fCosDelta * fCosDelta );
+	const float fEvenWgt = ( ( 1.0f / valence ) + fCosDelta / fTmp );
+	const float fOddWgt = ( 1.0f / fTmp );
+
+
+	// initialize. Valence^2 is the weight of the center position
+    Corner = (valence*valence)*PosCm;
+    float3 C0 = 0; float3 C1 = 0;
+
+	// index to tangent patch weights
+	uint uFirstWgtIndex = 2;
+
+	// collect the position just before the previous prefix
+    uint uWgtIndex = uFirstWgtIndex-1;
+    Corner += PosLu * fOdd;
+    C0 += PosLu * fOddWgt*COSODD(uWgtIndex, valence);
+    C1 += PosLu * fOddWgt*COSODD(uWgtIndex-1, valence);
+
+	// collect position at previous prefix
+    Corner += PosLm * fEven;
+    C0 += PosLm * fEvenWgt*COSEVEN(uFirstWgtIndex, valence);
+    C1 += PosLm * fEvenWgt*COSEVEN(uFirstWgtIndex-1, valence);
+	
+	// collect pairs of positions between previous and current prefix
+	uWgtIndex = uFirstWgtIndex;
+    uint uStart = prevprefix_c;
+    while(uStart < (prefix-1)) 
+    {
+        ++uStart;
+		const float3 pos_o = FETCHPOS(patch_index, uStart);
+        Corner += pos_o * fOdd;
+        C0 += pos_o * fOddWgt*COSODD(uWgtIndex, valence);
+        C1 += pos_o * fOddWgt*COSODD(uWgtIndex-1, valence);
+
+        ++uWgtIndex;
+        ++uStart;
+		const float3 pos_e = FETCHPOS(patch_index, uStart);
+        Corner += pos_e * fEven;
+        C0 += pos_e * fEvenWgt * COSEVEN(uWgtIndex, valence);
+        C1 += pos_e * fEvenWgt * COSEVEN(uWgtIndex-1, valence);
+    }
+    
+	// collect position at the current prefix
+	uWgtIndex = valence-1;	// this Line can be commented out
+    Corner += PosRd * fOdd;
+    C0 += PosRd * fOddWgt*COSODD(uWgtIndex, valence);
+    C1 += PosRd * fOddWgt*COSODD(uWgtIndex-1, valence);
+
+    // collect the other 3 positions on the quad.
+	Corner += PosRm * fEven;
+    C0 += PosRm * fEvenWgt * COSEVEN(0, valence);
+    C1 += PosRm * fEvenWgt * COSEVEN(uWgtIndex, valence);
+    
+	Corner += PosRu * fOdd;
+    C0 += PosRu * fOddWgt*COSODD(0, valence);
+    C1 += PosRu * fOddWgt*COSODD(uWgtIndex, valence);
+
+	Corner += PosCu * fEven;
+    C0 += PosCu * fEvenWgt * COSEVEN(1, valence);
+    C1 += PosCu * fEvenWgt * COSEVEN(0, valence);
+
+    // divide by sum of weights
+    Corner *= 1.0f / ( valence * valence + 5 * valence );
+
+/*
+	const float fS0 = (index&2)==0 ? 1 : (-1);
+	const float fS1 = ((index - 1) & 2)!=0 ? 1 : (-1);
+
+	C0 *= fS0;
+	C1 *= fS1;
+
+	// swap enabled
+	const bool bSwap = (index&1)!=0;
+	TanU = bSwap ? C1 : C0;
+	TanV = bSwap ? C0 : C1;
+*/
+	TanU = C0;
+	TanV = C1;
+
+}

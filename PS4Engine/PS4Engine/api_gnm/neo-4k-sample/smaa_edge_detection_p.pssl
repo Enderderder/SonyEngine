@@ -1,0 +1,27 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2017 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#include "smaa_porting.h"
+#include "smaa.hlsl"
+
+Texture2D<float4> texColor	: register(t0);
+
+ConstantBuffer cb
+{
+	uint		g_debugView;
+};
+
+struct VS_OUTPUT
+{
+    float4 position     : S_POSITION;
+	float2 uv			: TEXCOORD0;
+    float4 offset[3]	: TEXCOORD1;
+};
+
+float2 main(VS_OUTPUT input) : S_TARGET_OUTPUT
+{
+	return SMAAColorEdgeDetectionPS(input.uv, input.offset, texColor);
+}

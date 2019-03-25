@@ -1,0 +1,12 @@
+﻿/* SIE CONFIDENTIAL
+PlayStation(R)4 Programmer Tool Runtime Library Release 05.008.001
+* Copyright (C) 2014 Sony Interactive Entertainment Inc.
+* All Rights Reserved.
+*/
+
+#pragma PSSL_target_output_format (default FMT_32_R)
+
+int main(float4 screen : S_POSITION) : S_TARGET_OUTPUT0
+{
+	return int(screen.y);
+}
