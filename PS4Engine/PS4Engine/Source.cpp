@@ -333,7 +333,6 @@ int main(int argc, const char *argv[])
 	Gnm::SizeAlign stencilSizeAlign;
 	Gnm::SizeAlign htileSizeAlign;
 
-
 	Gnm::DepthRenderTargetSpec spec;
 	spec.init();
 	spec.m_width = util::kDisplayBufferWidth;

@@ -89,6 +89,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="common\shader_loader.h" />
     <ClInclude Include="CRenderer.h" />
     <ClInclude Include="Engine\Util.h" />
   </ItemGroup>
